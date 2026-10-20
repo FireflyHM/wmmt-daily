@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WMMT Daily</title>
+  <meta name="description" content="Wangan Midnight Maximum Tune overseas daily titles and bingo frame, with WhatsApp sharing.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>WMMT Daily</h1>
+      <p class="sub">Overseas daily titles &amp; bingo frame</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Date picker -->
+    <section class="date-bar" aria-label="Choose a date">
+      <button type="button" class="btn icon" id="prev-day" aria-label="Previous day">&#8249;</button>
+      <input type="date" id="date-input" aria-label="Date">
+      <button type="button" class="btn icon" id="next-day" aria-label="Next day">&#8250;</button>
+      <button type="button" class="btn" id="today-btn">Today</button>
+    </section>
+
+    <!-- Selected day -->
+    <section class="card day-card" aria-live="polite">
+      <div class="day-head">
+        <h2 id="day-title">—</h2>
+        <span class="pill" id="today-pill" hidden>Today</span>
+      </div>
+
+      <div class="day-body">
+        <figure class="frame">
+          <img id="frame-img" alt="" width="320" height="240">
+          <figcaption>
+            <span class="label">Bingo frame</span>
+            <strong id="frame-name">—</strong>
+          </figcaption>
+        </figure>
+
+        <div class="titles">
+          <span class="label">Daily titles (overseas)</span>
+          <ol id="title-list"></ol>
+          <div class="bingo" id="bingo-box" hidden>
+            <span class="label">6RR bingo title</span>
+            <strong id="bingo-title"></strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Upcoming week -->
+    <section class="week">
+      <h3>Next 7 days</h3>
+      <div class="week-strip" id="week-strip"></div>
+    </section>
+
+    <!-- WhatsApp -->
+    <section class="card wa-card">
+      <h3>Send to WhatsApp</h3>
+
+      <label class="label" for="message">Message</label>
+      <textarea id="message" rows="13" spellcheck="false"></textarea>
+      <div class="row">
+        <button type="button" class="btn" id="reset-msg">Reset text</button>
+        <button type="button" class="btn" id="copy-msg">Copy text</button>
+        <button type="button" class="btn" id="copy-img">Copy frame image</button>
+        <button type="button" class="btn wa" id="share-files" hidden>Share with image…</button>
+        <a class="btn wa" id="share-link" target="_blank" rel="noopener">Share text in WhatsApp…</a>
+      </div>
+      <p class="hint" id="share-hint">
+        “Share text in WhatsApp…” opens WhatsApp with the message filled in so you can pick any chat or group.
+        WhatsApp links can't carry images, so press “Copy frame image” and paste it (Ctrl+V) into the chat too<span id="share-files-hint" hidden>,
+        or use “Share with image…” to send both together</span><span id="push-hint" hidden>,
+        or use “Push directly” below, which sends the frame image with the message as its caption</span>.
+      </p>
+
+      <!-- Only shown when the page is served by the optional local server (npm start). -->
+      <div id="push-section" hidden>
+      <div class="divider"></div>
+
+      <h4>Push directly</h4>
+      <div id="wa-panel">
+        <div class="wa-status">
+          <span class="dot" id="wa-dot"></span>
+          <span id="wa-status-text">Checking…</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn" id="wa-connect">Link WhatsApp</button>
+          <button type="button" class="btn ghost" id="wa-logout" hidden>Unlink</button>
+        </div>
+        <div id="wa-qr" class="qr" hidden>
+          <img id="wa-qr-img" alt="WhatsApp pairing QR code" width="280" height="280">
+          <p class="hint">In WhatsApp on your phone: <b>Settings → Linked devices → Link a device</b>, then scan this code.</p>
+        </div>
+
+        <div id="wa-targets" hidden>
+          <div class="targets">
+            <div>
+              <span class="label">Individual numbers</span>
+              <form id="add-number" class="row">
+                <input type="tel" id="number-input" placeholder="+60 12 345 6789" autocomplete="off">
+                <input type="text" id="number-name" placeholder="Name (optional)" autocomplete="off">
+                <button type="submit" class="btn">Add</button>
+              </form>
+              <ul class="pick-list" id="number-list"></ul>
+            </div>
+            <div>
+              <span class="label">Groups <button type="button" class="link" id="reload-groups">refresh</button></span>
+              <input type="search" id="group-filter" placeholder="Filter groups…">
+              <ul class="pick-list" id="group-list"></ul>
+            </div>
+          </div>
+
+          <label class="check"><input type="checkbox" id="include-image" checked> Attach the frame image</label>
+          <div class="row">
+            <button type="button" class="btn primary" id="send-btn">Send</button>
+            <span id="send-summary" class="hint"></span>
+          </div>
+          <ul id="send-results" class="results"></ul>
+        </div>
+      </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap site-footer">
+    Titles: <a href="https://w.atwiki.jp/wmmt_title/" target="_blank" rel="noopener">WMMT 日付称号 wiki</a> (overseas rows) ·
+    Frames: <a href="https://www.dragapult.xyz/wmmt-frame-viewer/" target="_blank" rel="noopener">WMMT6RR Frame Viewer</a> by SirScrubbington.
+    Dates follow this device’s clock.
+  </footer>
+
+  <script src="data/titles.js"></script>
+  <script src="js/daily.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
