@@ -7,6 +7,14 @@
 
   var NUMBERS_KEY = 'wmmt-daily.numbers';
   var SELECTED_GROUPS_KEY = 'wmmt-daily.groups';
+  var SHOW_JA_KEY = 'wmmt-daily.showJa';
+
+  var FLASH_MS = 1800; // how long a button shows "Copied" etc.
+  var SEARCH_DEBOUNCE_MS = 150;
+  var STATUS_POLL_MS = 10000; // linked or not linked
+  var STATUS_POLL_PAIRING_MS = 2000; // while connecting or showing a QR code
+  var SCHEDULES_POLL_MS = 30000;
+  var MIDNIGHT_CHECK_MS = 60000;
 
   var state = {
     date: null, // Date being shown
@@ -32,16 +40,9 @@
   // -------------------------------------------------------------------------
   // Date view
   // -------------------------------------------------------------------------
-  function today() {
-    var n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
-  }
+  function today() { return D.startOfDay(new Date()); }
 
-  function addDays(date, n) {
-    var d = new Date(date);
-    d.setDate(d.getDate() + n);
-    return d;
-  }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 
   function sameDay(a, b) { return D.toISODate(a) === D.toISODate(b); }
 
@@ -61,8 +62,6 @@
   // -------------------------------------------------------------------------
   // Japanese titles toggle
   // -------------------------------------------------------------------------
-  var SHOW_JA_KEY = 'wmmt-daily.showJa';
-
   function showJapanese() { return $('show-ja').checked; }
 
   function applyJapanese() {
@@ -76,26 +75,9 @@
   var MAX_DATES_PER_PARITY = 150;
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  // Case/width-insensitive form: "ＴＯＦＵ" and "tofu" match, as do full/half-width kana.
-  function norm(s) { return String(s).normalize('NFKC').toLowerCase(); }
-
-  // Next date (from today) on this month-day in a year of the given parity.
-  function nextOccurrence(parity, key) {
-    var mm = Number(key.slice(0, 2));
-    var dd = Number(key.slice(3));
-    var t = today();
-    for (var y = t.getFullYear(); y < t.getFullYear() + 12; y++) {
-      if ((y % 2 === 0) !== (parity === 'even')) continue;
-      var d = new Date(y, mm - 1, dd);
-      if (d.getMonth() !== mm - 1) continue; // 29 Feb in a non-leap year
-      if (d >= t) return d;
-    }
-    return null;
-  }
-
   // Wrap each case-insensitive occurrence of the query in <mark>.
   function highlight(el, text, q) {
-    var lower = norm(text);
+    var lower = D.normalizeForSearch(text);
     // NFKC can change length (e.g. half-width kana), so only highlight when it's 1:1.
     if (lower.length !== text.length || !q) {
       el.textContent = text;
@@ -113,8 +95,66 @@
     el.appendChild(document.createTextNode(text.slice(i)));
   }
 
+  // One search result: the date (opens its next occurrence) and its matching titles.
+  function renderMatch(parity, match, q) {
+    var li = document.createElement('li');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'result-date';
+    var mm = Number(match.key.slice(0, 2));
+    btn.textContent = Number(match.key.slice(3)) + ' ' + MONTHS[mm - 1];
+    var next = D.nextOccurrence(parity, match.key, today());
+    if (next) {
+      btn.title = 'Open ' + D.longDate(next);
+      btn.addEventListener('click', function () {
+        setDate(next);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    } else {
+      btn.disabled = true;
+    }
+    li.appendChild(btn);
+
+    var ul = document.createElement('ul');
+    match.hits.forEach(function (h) {
+      var row = document.createElement('li');
+      var slot = document.createElement('span');
+      slot.className = 'slot' + (h.slot === 6 ? ' bingo' : '');
+      slot.textContent = SLOT_LABELS[h.slot] || '#' + (h.slot + 1);
+      var text = document.createElement('span');
+      if (h.en) highlight(text, h.en, q);
+      if (h.ja) {
+        var jaEl = jaSpan('');
+        // Always show the Japanese text when that's where the match is.
+        if (h.hitJa) jaEl.classList.add('hit');
+        highlight(jaEl, h.ja, q);
+        text.appendChild(jaEl);
+      }
+      row.appendChild(slot);
+      row.appendChild(text);
+      ul.appendChild(row);
+    });
+    li.appendChild(ul);
+    return li;
+  }
+
+  // Fills one results column and returns how many titles matched.
+  function renderSearchColumn(parity, matches, q) {
+    var list = $('results-' + parity);
+    list.innerHTML = '';
+    matches.slice(0, MAX_DATES_PER_PARITY).forEach(function (match) {
+      list.appendChild(renderMatch(parity, match, q));
+    });
+    var titles = matches.reduce(function (n, m) { return n + m.hits.length; }, 0);
+    $('count-' + parity).textContent = matches.length
+      ? plural(matches.length, 'date') + ', ' + plural(titles, 'title') +
+        (matches.length > MAX_DATES_PER_PARITY ? ' (first ' + MAX_DATES_PER_PARITY + ' shown)' : '')
+      : '';
+    return titles;
+  }
+
   function search(query) {
-    var q = norm(query.trim());
+    var q = D.normalizeForSearch(query.trim());
     var box = $('search-results');
     if (!q) {
       box.hidden = true;
@@ -123,82 +163,12 @@
       return;
     }
 
-    var total = 0;
-    ['even', 'odd'].forEach(function (parity) {
-      var en = TITLES.en[parity];
-      var ja = TITLES.ja[parity];
-      var list = $('results-' + parity);
-      list.innerHTML = '';
-      var dates = 0;
-      var titles = 0;
-
-      Object.keys(en).forEach(function (key) {
-        var rowEn = en[key] || [];
-        var rowJa = ja[key] || [];
-        var hits = [];
-        for (var i = 0; i < Math.max(rowEn.length, rowJa.length); i++) {
-          var e = rowEn[i] || '';
-          var j = rowJa[i] || '';
-          var hitEn = e && norm(e).indexOf(q) !== -1;
-          var hitJa = j && norm(j).indexOf(q) !== -1;
-          if (hitEn || hitJa) hits.push({ slot: i, en: e, ja: j, hitJa: hitJa });
-        }
-        if (!hits.length) return;
-        dates++;
-        titles += hits.length;
-        if (dates > MAX_DATES_PER_PARITY) return;
-
-        var li = document.createElement('li');
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'result-date';
-        var mm = Number(key.slice(0, 2));
-        btn.textContent = Number(key.slice(3)) + ' ' + MONTHS[mm - 1];
-        var next = nextOccurrence(parity, key);
-        if (next) {
-          btn.title = 'Open ' + D.longDate(next);
-          btn.addEventListener('click', function () {
-            setDate(next);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          });
-        } else {
-          btn.disabled = true;
-        }
-        li.appendChild(btn);
-
-        var ul = document.createElement('ul');
-        hits.forEach(function (h) {
-          var row = document.createElement('li');
-          var slot = document.createElement('span');
-          slot.className = 'slot' + (h.slot === 6 ? ' bingo' : '');
-          slot.textContent = SLOT_LABELS[h.slot] || '#' + (h.slot + 1);
-          var text = document.createElement('span');
-          if (h.en) highlight(text, h.en, q);
-          if (h.ja) {
-            var jaEl = jaSpan('');
-            // Always show the Japanese text when that's where the match is.
-            if (h.hitJa) jaEl.classList.add('hit');
-            highlight(jaEl, h.ja, q);
-            text.appendChild(jaEl);
-          }
-          row.appendChild(slot);
-          row.appendChild(text);
-          ul.appendChild(row);
-        });
-        li.appendChild(ul);
-        list.appendChild(li);
-      });
-
-      $('count-' + parity).textContent = dates
-        ? dates + ' date' + (dates === 1 ? '' : 's') + ', ' + titles + ' title' + (titles === 1 ? '' : 's') +
-          (dates > MAX_DATES_PER_PARITY ? ' (first ' + MAX_DATES_PER_PARITY + ' shown)' : '')
-        : '';
-      total += titles;
-    });
+    var matches = D.findTitleMatches(TITLES, q);
+    var total = renderSearchColumn('even', matches.even, q) + renderSearchColumn('odd', matches.odd, q);
 
     box.hidden = false;
     $('search-summary').textContent = total
-      ? total + ' matching title' + (total === 1 ? '' : 's') + ' for “' + query.trim() + '”. Click a date to open its next occurrence.'
+      ? plural(total, 'matching title') + ' for “' + query.trim() + '”. Click a date to open its next occurrence.'
       : 'No titles match “' + query.trim() + '”.';
   }
 
@@ -274,12 +244,12 @@
     return new Promise(function (resolve, reject) {
       var img = new Image();
       img.onload = function () {
-        var pad = Math.round(img.naturalWidth * 0.06);
+        var pad = Math.round(img.naturalWidth * D.FRAME_PAD_RATIO);
         var canvas = document.createElement('canvas');
         canvas.width = img.naturalWidth + pad * 2;
         canvas.height = img.naturalHeight + pad * 2;
         var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#15171c';
+        ctx.fillStyle = D.FRAME_BG;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, pad, pad);
         canvas.toBlob(function (blob) {
@@ -301,7 +271,7 @@
     var original = btn.dataset.label || (btn.dataset.label = btn.textContent);
     btn.textContent = text;
     announce(text);
-    setTimeout(function () { btn.textContent = original; }, 1800);
+    setTimeout(function () { btn.textContent = original; }, FLASH_MS);
   }
 
   function initImageSharing() {
@@ -352,12 +322,12 @@
   function pollStatus() {
     api('/api/wa/status').then(function (s) {
       renderStatus(s);
-      var delay = s.state === 'open' || s.state === 'disconnected' ? 10000 : 2000;
+      var delay = s.state === 'open' || s.state === 'disconnected' ? STATUS_POLL_MS : STATUS_POLL_PAIRING_MS;
       clearTimeout(pollTimer);
       pollTimer = setTimeout(pollStatus, delay);
     }).catch(function () {
       clearTimeout(pollTimer);
-      pollTimer = setTimeout(pollStatus, 10000);
+      pollTimer = setTimeout(pollStatus, STATUS_POLL_MS);
     });
   }
 
@@ -421,29 +391,35 @@
       });
   }
 
+  // Change one saved number. Looked up by number rather than list position,
+  // because another tab may have changed the list since it was rendered.
+  function updateNumber(number, change) {
+    var all = load(NUMBERS_KEY, []);
+    var i = all.findIndex(function (n) { return n.number === number; });
+    if (i === -1) return;
+    change(all, i);
+    save(NUMBERS_KEY, all);
+  }
+
   function renderNumbers() {
     var numbers = load(NUMBERS_KEY, []);
     var list = $('number-list');
     list.innerHTML = '';
-    numbers.forEach(function (n, i) {
+    numbers.forEach(function (n) {
       var li = document.createElement('li');
       li.innerHTML =
         '<label><input type="checkbox"><span class="name"></span></label>' +
-        '<span class="meta"></span><button type="button" class="remove" >×</button>';
+        '<span class="meta"></span><button type="button" class="remove">×</button>';
       var cb = li.querySelector('input');
       cb.checked = n.selected !== false;
       cb.addEventListener('change', function () {
-        var all = load(NUMBERS_KEY, []);
-        all[i].selected = cb.checked;
-        save(NUMBERS_KEY, all);
+        updateNumber(n.number, function (all, i) { all[i].selected = cb.checked; });
       });
       li.querySelector('.name').textContent = n.name || n.number;
       li.querySelector('.meta').textContent = n.name ? n.number : '';
       li.querySelector('.remove').setAttribute('aria-label', 'Remove ' + (n.name || n.number));
       li.querySelector('.remove').addEventListener('click', function () {
-        var all = load(NUMBERS_KEY, []);
-        all.splice(i, 1);
-        save(NUMBERS_KEY, all);
+        updateNumber(n.number, function (all, i) { all.splice(i, 1); });
         renderNumbers();
       });
       list.appendChild(li);
@@ -622,7 +598,26 @@
     });
     $('sched-form').addEventListener('submit', addSchedule);
     loadSchedules();
-    setInterval(loadSchedules, 30000);
+    setInterval(loadSchedules, SCHEDULES_POLL_MS);
+  }
+
+  function addNumber(e) {
+    e.preventDefault();
+    var input = $('number-input');
+    var digits = D.normalizePhone(input.value);
+    if (!digits) {
+      input.setCustomValidity('Enter the number with country code, e.g. +60 12 345 6789');
+      input.reportValidity();
+      return;
+    }
+    var all = load(NUMBERS_KEY, []);
+    if (!all.some(function (n) { return D.normalizePhone(n.number) === digits; })) {
+      all.push({ number: '+' + digits, name: $('number-name').value.trim(), selected: true });
+      save(NUMBERS_KEY, all);
+    }
+    input.value = '';
+    $('number-name').value = '';
+    renderNumbers();
   }
 
   function initWhatsApp() {
@@ -650,24 +645,7 @@
     });
     $('reload-groups').addEventListener('click', loadGroups);
     $('group-filter').addEventListener('input', renderGroups);
-    $('add-number').addEventListener('submit', function (e) {
-      e.preventDefault();
-      var raw = $('number-input').value.trim();
-      var digits = raw.replace(/\D/g, '');
-      if (digits.length < 7) {
-        $('number-input').setCustomValidity('Enter the number with country code, e.g. +60 12 345 6789');
-        $('number-input').reportValidity();
-        return;
-      }
-      var all = load(NUMBERS_KEY, []);
-      if (!all.some(function (n) { return n.number.replace(/\D/g, '') === digits; })) {
-        all.push({ number: '+' + digits, name: $('number-name').value.trim(), selected: true });
-        save(NUMBERS_KEY, all);
-      }
-      $('number-input').value = '';
-      $('number-name').value = '';
-      renderNumbers();
-    });
+    $('add-number').addEventListener('submit', addNumber);
     $('number-input').addEventListener('input', function () { this.setCustomValidity(''); });
     $('send-btn').addEventListener('click', send);
     $('number-list').setAttribute('data-empty', 'No numbers yet — add one above');
@@ -690,8 +668,8 @@
     setDate(date || today(), { fromHash: !!date });
   }
 
-  $('prev-day').addEventListener('click', function () { setDate(addDays(state.date, -1)); });
-  $('next-day').addEventListener('click', function () { setDate(addDays(state.date, 1)); });
+  $('prev-day').addEventListener('click', function () { setDate(D.addDays(state.date, -1)); });
+  $('next-day').addEventListener('click', function () { setDate(D.addDays(state.date, 1)); });
   $('today-btn').addEventListener('click', function () { setDate(today()); });
   $('date-input').addEventListener('change', function (e) {
     if (e.target.value) setDate(D.fromISODate(e.target.value));
@@ -721,7 +699,7 @@
   var searchTimer = null;
   $('title-search').addEventListener('input', function (e) {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(function () { search(e.target.value); }, 150);
+    searchTimer = setTimeout(function () { search(e.target.value); }, SEARCH_DEBOUNCE_MS);
   });
   $('copy-msg').addEventListener('click', function () {
     var btn = this;
@@ -739,7 +717,7 @@
   // Roll over to the new day at midnight if the user is watching "today".
   setInterval(function () {
     if (state.followToday && !sameDay(state.date, today())) setDate(today());
-  }, 60000);
+  }, MIDNIGHT_CHECK_MS);
 
   setDateFromHash();
   initWhatsApp();
