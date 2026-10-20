@@ -211,6 +211,27 @@ async function frameImage(daily) {
     .toBuffer();
 }
 
+// Bulk sends from an unofficial client are what gets WhatsApp accounts
+// restricted, so keep each send small and spaced out.
+const MAX_RECIPIENTS = 25;
+const SEND_DELAY_MS = 750;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function checkRecipientCount(count) {
+  if (count > MAX_RECIPIENTS) {
+    throw new Error(`Pick at most ${MAX_RECIPIENTS} numbers and groups in total`);
+  }
+}
+
+function stringList(value, field) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
+    throw new Error(`"${field}" must be a list of strings`);
+  }
+  return value;
+}
+
 /**
  * Sends the daily message to each number and group.
  * @returns {Promise<Array<{target: string, kind: string, ok: boolean, error?: string}>>}
@@ -226,7 +247,8 @@ async function sendDaily({ daily, text, includeImage, numbers, groups }) {
   ];
 
   const results = [];
-  for (const t of targets) {
+  for (const [i, t] of targets.entries()) {
+    if (i > 0) await sleep(SEND_DELAY_MS);
     try {
       const jid = await t.resolve();
       if (t.kind === 'group' && !jid.endsWith('@g.us')) throw new Error('Not a group id');
@@ -250,10 +272,13 @@ async function sendDaily({ daily, text, includeImage, numbers, groups }) {
  */
 app.post('/api/wa/send', async (req, res) => {
   if (!requireOpen(res)) return;
-  const { date, message, includeImage = true, numbers = [], groups = [] } = req.body || {};
+  const { date, message, includeImage = true } = req.body || {};
 
-  let daily;
+  let daily, numbers, groups;
   try {
+    numbers = stringList(req.body && req.body.numbers, 'numbers');
+    groups = stringList(req.body && req.body.groups, 'groups');
+    checkRecipientCount(numbers.length + groups.length);
     daily = Daily.getDaily(date ? Daily.fromISODate(date) : new Date(), TITLES);
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -264,7 +289,7 @@ app.post('/api/wa/send', async (req, res) => {
 
   const text = (typeof message === 'string' && message.trim()) || Daily.formatMessage(daily);
   try {
-    const results = await sendDaily({ daily, text, includeImage, numbers, groups });
+    const results = await sendDaily({ daily, text, includeImage: !!includeImage, numbers, groups });
     res.json({ date: daily.date, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -391,6 +416,7 @@ function parseSchedule(body) {
     lastRun: null,
   };
   if (!s.numbers.length && !s.groups.length) throw new Error('Tick at least one number or group');
+  checkRecipientCount(s.numbers.length + s.groups.length);
   if (repeat === 'once') {
     let when;
     try {
