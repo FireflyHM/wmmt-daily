@@ -240,31 +240,8 @@
     $('bingo-title').textContent = daily.bingo || '';
     $('bingo-title-ja').textContent = daily.bingoJa || '';
 
-    renderWeek();
     setMessage(D.formatMessage(daily, { japanese: showJapanese() }));
     document.title = 'WMMT Daily — ' + daily.date;
-  }
-
-  function renderWeek() {
-    var strip = $('week-strip');
-    strip.innerHTML = '';
-    for (var i = 1; i <= 7; i++) {
-      var d = addDays(state.date, i);
-      var daily = D.getDaily(d, TITLES);
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'week-day';
-      if (sameDay(d, today())) btn.setAttribute('aria-current', 'date');
-      btn.title = D.longDate(d);
-      btn.innerHTML =
-        '<span class="d"></span><img loading="lazy" alt=""><span class="f"></span><span class="b"></span>';
-      btn.querySelector('.d').textContent = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-      btn.querySelector('img').src = daily.frameImage;
-      btn.querySelector('.f').textContent = daily.frameLabel;
-      btn.querySelector('.b').textContent = daily.bingo || daily.titles[0] || '';
-      btn.addEventListener('click', setDate.bind(null, d, undefined));
-      strip.appendChild(btn);
-    }
   }
 
   // -------------------------------------------------------------------------

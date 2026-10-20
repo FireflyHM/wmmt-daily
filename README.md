@@ -12,7 +12,7 @@ In the repo, go to **Settings → Pages → Source** and choose **GitHub Actions
 
 On the static site you get:
 
-- Today's titles, the bingo title and the frame, plus the next 7 days. Use ‹ / › / Today or the date picker to change dates. Each date has its own link (e.g. `#2026-12-25`).
+- Today's titles, the bingo title and the frame. Use ‹ / › / Today or the date picker to change dates. Each date has its own link (e.g. `#2026-12-25`).
 - **Share text in WhatsApp…** opens WhatsApp with the message filled in. You then pick any contact or group.
 - **Share with image…** sends the frame image and the text together through your device's share menu. It shows on phones and in Chrome/Edge on Windows and macOS.
 - **Copy frame image** lets you paste the image into WhatsApp Web or the desktop app.
