@@ -669,6 +669,13 @@
     try { return D.fromISODate(m[1]); } catch (e) { return null; }
   }
 
+  // Show the date in the URL hash. A missing or invalid hash falls back to
+  // today and is cleared, so the URL never names a date that isn't shown.
+  function setDateFromHash() {
+    var date = dateFromHash();
+    setDate(date || today(), { fromHash: !!date });
+  }
+
   $('prev-day').addEventListener('click', function () { setDate(addDays(state.date, -1)); });
   $('next-day').addEventListener('click', function () { setDate(addDays(state.date, 1)); });
   $('today-btn').addEventListener('click', function () { setDate(today()); });
@@ -676,7 +683,7 @@
     if (e.target.value) setDate(D.fromISODate(e.target.value));
   });
   window.addEventListener('hashchange', function () {
-    setDate(dateFromHash() || today(), { fromHash: true });
+    setDateFromHash();
   });
 
   $('message').addEventListener('input', updateShareLink);
@@ -708,6 +715,6 @@
     if (state.followToday && !sameDay(state.date, today())) setDate(today());
   }, 60000);
 
-  setDate(dateFromHash() || today(), { fromHash: true });
+  setDateFromHash();
   initWhatsApp();
 })();
