@@ -91,8 +91,10 @@ async function connectWhatsApp() {
         console.log('[wa] logged out — clearing saved session');
         wa.me = null;
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-      } else if (!state.creds.registered) {
+      } else if (!state.creds.me) {
         // Pairing QR expired without being scanned; wait for the user to try again.
+        // (creds.registered is only set by pairing-code logins, so check creds.me,
+        // which is filled in once a QR scan succeeds.)
         console.log('[wa] pairing QR expired');
         wa.error = 'QR code expired — click Link WhatsApp to try again';
       } else {
