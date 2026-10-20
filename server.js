@@ -134,9 +134,18 @@ app.use(express.json({ limit: '100kb' }));
 app.use(express.static(PUBLIC_DIR));
 
 // The API sends from your WhatsApp account, so refuse requests made by other websites.
+// Checking Host blocks DNS rebinding: a page on attacker.example that re-points its
+// name to 127.0.0.1 still sends "Host: attacker.example", and same-origin GETs carry
+// no Origin header at all.
+const LOCAL_HOSTS = [`localhost:${PORT}`, `127.0.0.1:${PORT}`];
+const LOCAL_ORIGINS = LOCAL_HOSTS.map((h) => `http://${h}`);
+
 app.use('/api', (req, res, next) => {
+  if (!LOCAL_HOSTS.includes(req.get('host'))) {
+    return res.status(403).json({ error: 'Request refused: unexpected Host header' });
+  }
   const origin = req.get('origin');
-  if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) {
+  if (origin && !LOCAL_ORIGINS.includes(origin)) {
     return res.status(403).json({ error: 'Cross-origin request refused' });
   }
   next();
