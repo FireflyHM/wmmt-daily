@@ -8,6 +8,7 @@
   var NUMBERS_KEY = 'wmmt-daily.numbers';
   var SELECTED_GROUPS_KEY = 'wmmt-daily.groups';
   var SHOW_JA_KEY = 'wmmt-daily.showJa';
+  var THEME_KEY = 'wmmt-daily.theme'; // also read by the inline script in index.html
 
   var FLASH_MS = 1800; // how long a button shows "Copied" etc.
   var SEARCH_DEBOUNCE_MS = 150;
@@ -183,6 +184,13 @@
     announce(D.longDate(date));
   }
 
+  function renderPlate(plate) {
+    var p = D.plateDigits(plate);
+    $('plate-dot').style.display = p.dot ? '' : 'none';
+    p.digits.forEach(function (d, i) { $('plate-d' + (i + 1)).textContent = d; });
+    $('plate-label').textContent = 'Number plate SGP 765 す ' + plate.replace(' ', '-');
+  }
+
   function render() {
     var date = state.date;
     var daily = D.getDaily(date, TITLES);
@@ -196,6 +204,7 @@
     img.src = daily.frameImage;
     img.alt = ''; // the caption already names the frame
     $('frame-name').textContent = daily.frameLabel;
+    renderPlate(D.numberPlate(date));
 
     var list = $('title-list');
     list.innerHTML = '';
@@ -238,32 +247,70 @@
     $('share-link').href = 'https://wa.me/?text=' + encodeURIComponent($('message').value);
   }
 
-  // Frame image as a PNG on a dark backing, so the transparent centre
-  // doesn't turn into a random colour when WhatsApp re-encodes it.
-  function frameImageBlob(daily) {
+  function loadImage(src) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
-      img.onload = function () {
-        var pad = Math.round(img.naturalWidth * D.FRAME_PAD_RATIO);
-        var canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth + pad * 2;
-        canvas.height = img.naturalHeight + pad * 2;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = D.FRAME_BG;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, pad, pad);
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('Could not load ' + src)); };
+      img.src = src;
+    });
+  }
+
+  // The day's number plate at the plate image's own size.
+  function plateCanvas(plateImg, plate) {
+    var P = D.PLATE;
+    var canvas = document.createElement('canvas');
+    canvas.width = P.width;
+    canvas.height = P.height;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(plateImg, 0, 0);
+    // Same soft shadow as the page's SVG filter.
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowOffsetX = 1.5;
+    ctx.shadowOffsetY = 2;
+    ctx.shadowBlur = 3.6;
+    ctx.fillStyle = P.ink;
+    ctx.font = '600 ' + P.fontSize + 'px "Barlow Condensed", "Arial Narrow", sans-serif';
+    ctx.textAlign = 'center';
+    var p = D.plateDigits(plate);
+    p.digits.forEach(function (d, i) { if (d) ctx.fillText(d, P.slots[i], P.baseline); });
+    if (p.dot) {
+      ctx.beginPath();
+      ctx.arc(P.dot.x, P.dot.y, P.dot.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return canvas;
+  }
+
+  // Frame above number plate as one PNG on a dark backing, so the frame's
+  // transparent centre doesn't turn into a random colour when WhatsApp re-encodes it.
+  function shareImageBlob(daily) {
+    return Promise.all([
+      loadImage(daily.frameImage),
+      loadImage(D.PLATE.image),
+      document.fonts.load('600 ' + D.PLATE.fontSize + 'px "Barlow Condensed"', '0123456789'),
+    ]).then(function (res) {
+      var frame = res[0];
+      var L = D.shareLayout(frame.naturalWidth, frame.naturalHeight);
+      var canvas = document.createElement('canvas');
+      canvas.width = L.width;
+      canvas.height = L.height;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = D.FRAME_BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, L.frame.x, L.frame.y, L.frame.width, L.frame.height);
+      ctx.drawImage(plateCanvas(res[1], D.numberPlate(D.fromISODate(daily.date))), L.plate.x, L.plate.y, L.plate.width, L.plate.height);
+      return new Promise(function (resolve, reject) {
         canvas.toBlob(function (blob) {
           blob ? resolve(blob) : reject(new Error('Could not create image'));
         }, 'image/png');
-      };
-      img.onerror = function () { reject(new Error('Could not load frame image')); };
-      img.src = daily.frameImage;
+      });
     });
   }
 
   function frameFile(daily) {
-    return frameImageBlob(daily).then(function (blob) {
-      return new File([blob], 'wmmt-frame-' + daily.date + '-' + daily.frame + '.png', { type: 'image/png' });
+    return shareImageBlob(daily).then(function (blob) {
+      return new File([blob], 'wmmt-daily-' + daily.date + '-' + daily.frame + '.png', { type: 'image/png' });
     });
   }
 
@@ -297,7 +344,7 @@
         return;
       }
       // Pass the promise straight in so Safari keeps the user-gesture permission.
-      navigator.clipboard.write([new ClipboardItem({ 'image/png': frameImageBlob(state.daily) })])
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': shareImageBlob(state.daily) })])
         .then(function () { flash(btn, 'Image copied — paste in WhatsApp'); })
         .catch(function () { flash(btn, 'Copy failed'); });
     });
@@ -532,7 +579,7 @@
       var who = document.createElement('span');
       who.className = 'who';
       who.textContent = describeTargets(s) + ' · ' +
-        (s.includeImage ? 'with frame image' : 'text only') + (s.japanese ? ' · with Japanese' : '');
+        (s.includeImage ? 'with image' : 'text only') + (s.japanese ? ' · with Japanese' : '');
       li.appendChild(who);
 
       var meta = document.createElement('span');
@@ -622,11 +669,12 @@
   }
 
   function initWhatsApp() {
-    // The direct-send panel only works when served by the optional local server
-    // (server.js). On static hosting such as GitHub Pages it stays hidden.
+    // The whole "Send to WhatsApp" panel only appears when served by the optional
+    // local server (server.js). On static hosting such as GitHub Pages it stays hidden.
     var isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     if (!isLocal) return;
     api('/api/wa/status').then(function (s) {
+      $('wa-card').hidden = false;
       $('push-section').hidden = false;
       $('push-hint').hidden = false;
       renderStatus(s);
@@ -698,6 +746,20 @@
     save(SHOW_JA_KEY, showJapanese());
     applyJapanese();
     render();
+  });
+
+  // Until the box is used, the theme follows the system setting (and keeps following it).
+  var systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+  function syncThemeBox() {
+    var theme = document.documentElement.dataset.theme;
+    $('dark-theme').checked = theme ? theme === 'dark' : systemDark.matches;
+  }
+  syncThemeBox();
+  systemDark.addEventListener('change', syncThemeBox);
+  $('dark-theme').addEventListener('change', function () {
+    var theme = this.checked ? 'dark' : 'light';
+    document.documentElement.dataset.theme = theme;
+    save(THEME_KEY, theme);
   });
 
   var searchTimer = null;

@@ -153,6 +153,12 @@
     });
   }
 
+  // 5 March -> "·3 05", 21 October -> "10 21"
+  function numberPlate(date) {
+    var month = date.getMonth() + 1;
+    return (month < 10 ? '·' + month : String(month)) + ' ' + pad(date.getDate());
+  }
+
   /**
    * Plain-text message for WhatsApp (uses *bold* / _italic_ markup).
    * @param {Object} daily from getDaily()
@@ -168,18 +174,18 @@
     var lines = [
       '🏁 *WMMT Daily* — ' + longDate(date),
       '',
-      '🖼️ *Bingo frame:* ' + daily.frameLabel,
-      '',
-      '🏆 *Daily Titles:*',
+      '🖼️ *Bingo Frame:* ' + daily.frameLabel,
+      '🚗 *Number Plate:* ' + numberPlate(date),
     ];
+    var bingo = withJa(daily.bingo, japanese ? daily.bingoJa : null);
+    if (bingo) {
+      lines.push('🎯 *Bingo Title:* ' + bingo);
+    }
+    lines.push('', '🏆 *Daily Titles:*');
     if (daily.titles.length) {
       daily.titles.forEach(function (t, i) { lines.push((i + 1) + '. ' + withJa(t, daily.titlesJa[i])); });
     } else {
       lines.push('_No title data for this date_');
-    }
-    var bingo = withJa(daily.bingo, japanese ? daily.bingoJa : null);
-    if (bingo) {
-      lines.push('', '🎯 *6RR Bingo title:* ' + bingo);
     }
     return lines.join('\n');
   }
@@ -192,6 +198,40 @@
   // fill the transparent centre with an arbitrary colour.
   var FRAME_PAD_RATIO = 0.06;
   var FRAME_BG = '#15171c';
+
+  // Number plate drawn over img/plate-blank.png, in that image's pixels.
+  // index.html's plate SVG uses the same numbers.
+  var PLATE = {
+    image: 'img/plate-blank.png',
+    width: 478,
+    height: 232,
+    ink: '#052c00',
+    fontSize: 153,
+    baseline: 194,
+    slots: [133, 210, 341, 422], // digit centres
+    dot: { x: 133, y: 146, r: 10 }, // replaces the first digit of a one-digit month
+  };
+
+  // "·3 05" -> {dot: true, digits: ['', '3', '0', '5']}; "10 21" -> {dot: false, digits: ['1', '0', '2', '1']}
+  function plateDigits(plate) {
+    var digits = plate.replace(/\D/g, '').split('');
+    var dot = digits.length === 3;
+    if (dot) digits.unshift('');
+    return { dot: dot, digits: digits };
+  }
+
+  // Shared image: the frame on top, the plate below at the frame's height.
+  function shareLayout(frameWidth, frameHeight) {
+    var pad = Math.round(frameWidth * FRAME_PAD_RATIO);
+    var plateWidth = Math.round(frameHeight * PLATE.width / PLATE.height);
+    var width = frameWidth + pad * 2;
+    return {
+      width: width,
+      height: frameHeight * 2 + pad * 3,
+      frame: { x: pad, y: pad, width: frameWidth, height: frameHeight },
+      plate: { x: Math.round((width - plateWidth) / 2), y: frameHeight + pad * 2, width: plateWidth, height: frameHeight },
+    };
+  }
 
   var MIN_PHONE_DIGITS = 7;
 
@@ -265,6 +305,9 @@
     FRAMES_LEAP: FRAMES_LEAP,
     FRAME_PAD_RATIO: FRAME_PAD_RATIO,
     FRAME_BG: FRAME_BG,
+    PLATE: PLATE,
+    plateDigits: plateDigits,
+    shareLayout: shareLayout,
     MIN_PHONE_DIGITS: MIN_PHONE_DIGITS,
     normalizePhone: normalizePhone,
     startOfDay: startOfDay,
@@ -280,6 +323,7 @@
     frameLabel: frameLabel,
     getDaily: getDaily,
     longDate: longDate,
+    numberPlate: numberPlate,
     formatMessage: formatMessage,
   };
 });

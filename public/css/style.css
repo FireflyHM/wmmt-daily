@@ -18,8 +18,9 @@
   color-scheme: light dark;
 }
 
+/* Dark colours: from the system setting, unless the "Dark theme" box sets data-theme on <html>. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1115;
     --surface: #181b21;
     --surface-2: #20242c;
@@ -36,6 +37,24 @@
     --err: #ff6b5f;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --surface: #181b21;
+  --surface-2: #20242c;
+  --text: #e9ebef;
+  --muted: #9aa1ad;
+  --border: #2c313b;
+  --accent: #ff5a40;
+  --accent-ink: #120705;
+  --gold: #ffc65c;
+  --gold-bg: #2b2310;
+  --wa: #2fc06d;
+  --wa-ink: #08130c;
+  --ok: #4bd187;
+  --err: #ff6b5f;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -53,7 +72,11 @@ a { color: var(--accent); }
 
 /* Header */
 .site-header {
-  background: linear-gradient(100deg, #15171c 0%, #2a1612 100%);
+  /* Key art from the WMMT6RR Asia/Oceania site (© Bandai Namco), darkened on the left behind the title. */
+  background:
+    linear-gradient(90deg, rgba(10, 10, 14, 0.75) 0%, rgba(10, 10, 14, 0.35) 45%, rgba(10, 10, 14, 0.05) 100%),
+    url("../img/header.jpg") right center / cover,
+    #15171c;
   color: #fff;
   border-bottom: 3px solid var(--accent);
   padding: 20px 0 16px;
@@ -61,11 +84,11 @@ a { color: var(--accent); }
 }
 .site-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: clamp(18px, 5.6vw, 28px); /* stays on one line down to phone width */
+  white-space: nowrap;
   font-style: italic;
   letter-spacing: 0.02em;
 }
-.site-header .sub { margin: 2px 0 0; color: #c9ccd2; }
 
 /* Generic bits */
 .card {
@@ -126,7 +149,7 @@ input[type="date"], input[type="time"], input[type="tel"], input[type="text"], i
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  color-scheme: light dark;
+  color-scheme: inherit;
 }
 textarea {
   width: 100%;
@@ -166,6 +189,19 @@ textarea {
 }
 .frame figcaption { margin-top: 10px; }
 .frame figcaption strong { font-size: 18px; }
+/* Barlow Condensed SemiBold, SIL Open Font License (fonts/OFL-BarlowCondensed.txt) */
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 600;
+  font-display: block;
+  src: url("../fonts/barlow-condensed-600.woff2") format("woff2");
+}
+.plate { margin-top: 14px; }
+/* As in the shared image: as tall as the 512×168 frame, so 346/512 of its width. */
+.plate svg { display: block; width: 67.6%; height: auto; margin: 0 auto; }
+/* Plate ink is part of the plate, so it stays the same in light and dark mode. */
+.plate-digits { fill: #052c00; }
+.plate-digits text { font: 600 153px "Barlow Condensed", "Arial Narrow", sans-serif; text-anchor: middle; }
 
 .titles ol { margin: 0; padding-left: 26px; }
 .titles li { padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 16px; }
@@ -175,8 +211,12 @@ textarea {
   margin-top: 14px; padding: 10px 12px;
   background: var(--gold-bg); border-left: 4px solid var(--gold); border-radius: 6px;
 }
-.bingo .label { color: var(--gold); }
-.bingo strong { font-size: 17px; }
+/* Bingo title on the day card: listed like a daily title, lined up with their text. */
+.bingo-row { margin-top: 14px; }
+.bingo-row strong { display: block; padding: 5px 0 5px 26px; font-size: 16px; font-weight: normal; }
+.bingo-row .ja { padding-left: 26px; margin-top: -5px; }
+/* Japanese titles on the day card read as well as the English ones. */
+.titles .ja { color: var(--text); font-size: 16px; }
 
 /* Japanese titles */
 .ja { display: block; color: var(--muted); font-size: 13px; }

@@ -173,6 +173,27 @@ app.get('/api/daily', (req, res) => {
   }
 });
 
+// The frame and plate image that sends attach, for checking it before a send.
+app.get('/api/daily/image', async (req, res) => {
+  let daily;
+  try {
+    daily = Daily.getDaily(req.query.date ? Daily.fromISODate(req.query.date) : new Date(), TITLES);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+  try {
+    const image = await shareImage(daily);
+    if (!image) {
+      res.status(404).json({ error: 'No frame image for this date' });
+      return;
+    }
+    res.type('png').send(image);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/wa/status', (req, res) => {
   res.json({ state: wa.state, qr: wa.qr, me: wa.me, error: wa.error });
 });
@@ -218,14 +239,69 @@ app.get('/api/wa/groups', async (req, res) => {
 // Sending
 // ---------------------------------------------------------------------------
 
-// Frame on a dark backing with a small border (same as the page's copied image).
-async function frameImage(daily) {
+// libvips can't read the page's WOFF2, so the server draws digits from the TTF of the same font.
+const PLATE_FONT = path.join(PUBLIC_DIR, 'fonts', 'BarlowCondensed-SemiBold.ttf');
+const PLATE_SHADOW = { dx: 2, dy: 2, sigma: 1.8, pad: 8 }; // matches the page's soft shadow
+
+// One digit, trimmed to its ink. Returns {data, info: {width, height}}.
+function plateGlyph(ch, colour, alpha) {
+  return sharp({
+    text: {
+      text: `<span foreground="${colour}" fgalpha="${alpha}%">${ch}</span>`,
+      font: `Barlow Condensed SemiBold ${Daily.PLATE.fontSize}px`,
+      fontfile: PLATE_FONT,
+      rgba: true,
+      dpi: 72,
+    },
+  }).png().toBuffer({ resolveWithObject: true });
+}
+
+// The day's number plate at the plate image's own size (same drawing as the page).
+async function plateImage(plate) {
+  const P = Daily.PLATE;
+  const p = Daily.plateDigits(plate);
+  const s = PLATE_SHADOW;
+  const shadows = [];
+  const inks = [];
+  for (const [i, d] of p.digits.entries()) {
+    if (!d) continue;
+    const ink = await plateGlyph(d, P.ink, 100);
+    // Centre the ink on the slot and sit it on the baseline.
+    const left = Math.round(P.slots[i] - ink.info.width / 2);
+    const top = P.baseline - ink.info.height;
+    const shadow = await sharp((await plateGlyph(d, '#000000', 45)).data)
+      .extend({ top: s.pad, bottom: s.pad, left: s.pad, right: s.pad, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .blur(s.sigma)
+      .png()
+      .toBuffer();
+    shadows.push({ input: shadow, left: left - s.pad + s.dx, top: top - s.pad + s.dy });
+    inks.push({ input: ink.data, left, top });
+  }
+  if (p.dot) {
+    const { x, y, r } = P.dot;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${P.width}" height="${P.height}">
+      <filter id="b"><feGaussianBlur stdDeviation="${s.sigma}"/></filter>
+      <circle cx="${x + s.dx}" cy="${y + s.dy}" r="${r}" fill="#000" fill-opacity="0.45" filter="url(#b)"/>
+      <circle cx="${x}" cy="${y}" r="${r}" fill="${P.ink}"/></svg>`;
+    inks.push({ input: Buffer.from(svg), left: 0, top: 0 });
+  }
+  return sharp(path.join(PUBLIC_DIR, P.image)).composite([...shadows, ...inks]).png().toBuffer();
+}
+
+// Frame above the number plate on a dark backing (same as the page's shared image).
+async function shareImage(daily) {
   const file = path.join(PUBLIC_DIR, daily.frameImage);
   if (!fs.existsSync(file)) return null;
-  const { width } = await sharp(file).metadata();
-  const pad = Math.round(width * Daily.FRAME_PAD_RATIO);
-  return sharp(file)
-    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: Daily.FRAME_BG })
+  const { width, height } = await sharp(file).metadata();
+  const L = Daily.shareLayout(width, height);
+  const plate = await sharp(await plateImage(Daily.numberPlate(Daily.fromISODate(daily.date))))
+    .resize(L.plate.width, L.plate.height)
+    .toBuffer();
+  return sharp({ create: { width: L.width, height: L.height, channels: 4, background: Daily.FRAME_BG } })
+    .composite([
+      { input: file, left: L.frame.x, top: L.frame.y },
+      { input: plate, left: L.plate.x, top: L.plate.y },
+    ])
     .flatten({ background: Daily.FRAME_BG })
     .png()
     .toBuffer();
@@ -258,7 +334,7 @@ function stringList(value, field) {
  */
 async function sendDaily({ daily, text, includeImage, numbers, groups }) {
   if (wa.state !== 'open' || !wa.sock) throw new Error('WhatsApp is not connected');
-  const image = includeImage ? await frameImage(daily) : null;
+  const image = includeImage ? await shareImage(daily) : null;
   const content = image ? { image, caption: text } : { text };
 
   const targets = [
