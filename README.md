@@ -19,6 +19,10 @@ On the static site you get:
 - **Show Japanese titles** adds the Japanese name under each title, on the page and in the WhatsApp message.
 - **Search titles** looks through every date's English and Japanese titles. Results are grouped into even and odd years, then by date. Click a date to open its next occurrence.
 
+## Linting
+
+Run `npm ci`, then `npm run lint` (ESLint, configured in `eslint.config.js`). Every pull request runs the same check.
+
 ## Updating the title data
 
 `public/data/titles.js` is generated from the wiki. To rebuild it, run `node tools/build-titles.js`. This downloads the 24 month pages, about 30 seconds.

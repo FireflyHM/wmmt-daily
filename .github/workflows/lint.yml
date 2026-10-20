@@ -1,0 +1,23 @@
+# Runs ESLint on every pull request and on pushes to main.
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Lint doesn't need the native install steps of sharp and Baileys.
+      - run: npm ci --ignore-scripts
+      - run: npm run lint

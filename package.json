@@ -5,7 +5,8 @@
   "description": "WMMT overseas daily titles & bingo frame viewer with WhatsApp push",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint --max-warnings 0 ."
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",
@@ -13,5 +14,11 @@
     "pino": "9.14.0",
     "qrcode": "1.5.4",
     "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "eslint-plugin-promise": "7.3.0",
+    "globals": "17.13.0"
   }
 }
