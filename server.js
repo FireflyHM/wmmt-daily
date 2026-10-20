@@ -512,7 +512,13 @@ app.delete('/api/schedules/:id', (req, res) => {
 
 setInterval(checkSchedules, 20 * 1000);
 
-app.listen(PORT, '127.0.0.1', () => {
+// Express 5 passes listen errors (e.g. port already in use) to this callback
+// instead of throwing, so exit here rather than run with no server.
+app.listen(PORT, '127.0.0.1', (err) => {
+  if (err) {
+    console.error('Could not start the server on port %s: %s', PORT, err.message);
+    process.exit(1);
+  }
   console.log(`WMMT Daily running at http://localhost:${PORT}`);
   // Reconnect automatically if a WhatsApp session was saved previously.
   if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
