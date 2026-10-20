@@ -130,8 +130,8 @@ function requireOpen(res) {
 
 // Turn "+60 12-345 6789" into a JID, confirming the number is on WhatsApp.
 async function numberToJid(raw) {
-  const digits = String(raw).replace(/\D/g, '');
-  if (digits.length < 7) throw new Error('Invalid number: ' + raw);
+  const digits = Daily.normalizePhone(raw);
+  if (!digits) throw new Error('Invalid number: ' + raw);
   const [result] = await wa.sock.onWhatsApp(digits);
   if (!result || !result.exists) throw new Error(raw + ' is not on WhatsApp');
   return result.jid;
@@ -218,16 +218,15 @@ app.get('/api/wa/groups', async (req, res) => {
 // Sending
 // ---------------------------------------------------------------------------
 
-// Frame on a dark backing with a small border, so WhatsApp's re-encoding
-// doesn't fill the transparent centre with an arbitrary colour.
+// Frame on a dark backing with a small border (same as the page's copied image).
 async function frameImage(daily) {
   const file = path.join(PUBLIC_DIR, daily.frameImage);
   if (!fs.existsSync(file)) return null;
   const { width } = await sharp(file).metadata();
-  const pad = Math.round(width * 0.06);
+  const pad = Math.round(width * Daily.FRAME_PAD_RATIO);
   return sharp(file)
-    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: '#15171c' })
-    .flatten({ background: '#15171c' })
+    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: Daily.FRAME_BG })
+    .flatten({ background: Daily.FRAME_BG })
     .png()
     .toBuffer();
 }
@@ -378,13 +377,12 @@ function nextRun(s, now = new Date()) {
   if (s.repeat === 'once') return s.done ? null : atTime(Daily.fromISODate(s.date), s.time);
   const created = s.createdAt ? new Date(s.createdAt) : null;
   for (const offset of [-1, 0]) {
-    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+    const day = Daily.addDays(Daily.startOfDay(now), offset);
     const slot = atTime(day, s.time);
     const handled = (s.lastRunDate || '') >= Daily.toISODate(day);
     if (!handled && !(created && slot < created)) return slot;
   }
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  return atTime(tomorrow, s.time);
+  return atTime(Daily.addDays(Daily.startOfDay(now), 1), s.time);
 }
 
 function scheduleView(s) {
@@ -404,7 +402,7 @@ const running = new Set();
 
 async function runSchedule(s, due, now) {
   running.add(s.id);
-  const day = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const day = Daily.startOfDay(due);
   s.lastRunDate = Daily.toISODate(day);
   if (s.repeat === 'once') s.done = true;
   try {
@@ -458,7 +456,7 @@ function parseSchedule(body) {
     repeat,
     time,
     numbers: (Array.isArray(numbers) ? numbers : [])
-      .filter((n) => n && String(n.number).replace(/\D/g, '').length >= 7)
+      .filter((n) => n && Daily.normalizePhone(n.number))
       .map((n) => ({ number: String(n.number), name: String(n.name || '') })),
     groups: (Array.isArray(groups) ? groups : [])
       .filter((g) => g && /@g\.us$/.test(g.id))

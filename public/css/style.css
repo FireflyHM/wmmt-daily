@@ -204,10 +204,6 @@ body:not(.show-ja) .ja { display: none; }
 mark { background: var(--gold-bg); color: inherit; border-radius: 3px; padding: 0 1px; box-shadow: 0 0 0 1px var(--gold); }
 
 /* WhatsApp */
-.notice {
-  padding: 10px 12px; border-radius: 8px;
-  background: var(--surface-2); border: 1px solid var(--border);
-}
 .wa-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
 .dot.open { background: var(--ok); }

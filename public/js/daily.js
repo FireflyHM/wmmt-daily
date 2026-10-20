@@ -184,9 +184,94 @@
     return lines.join('\n');
   }
 
+  // -------------------------------------------------------------------------
+  // Shared by the page (app.js) and the local server (server.js)
+  // -------------------------------------------------------------------------
+
+  // Shared frame images get a dark border, so WhatsApp's re-encoding doesn't
+  // fill the transparent centre with an arbitrary colour.
+  var FRAME_PAD_RATIO = 0.06;
+  var FRAME_BG = '#15171c';
+
+  var MIN_PHONE_DIGITS = 7;
+
+  // "+60 12-345 6789" -> "60123456789", or null if it's too short to be a number.
+  function normalizePhone(raw) {
+    var digits = String(raw == null ? '' : raw).replace(/\D/g, '');
+    return digits.length >= MIN_PHONE_DIGITS ? digits : null;
+  }
+
+  function startOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function addDays(date, n) {
+    var d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+
+  // Case/width-insensitive form: "ＴＯＦＵ" and "tofu" match, as do full/half-width kana.
+  function normalizeForSearch(s) {
+    return String(s).normalize('NFKC').toLowerCase();
+  }
+
+  // Next date on or after `from` with this "MM-DD" key, in a year of the given parity.
+  function nextOccurrence(parity, key, from) {
+    var mm = Number(key.slice(0, 2));
+    var dd = Number(key.slice(3));
+    var start = startOfDay(from);
+    for (var y = start.getFullYear(); y < start.getFullYear() + 12; y++) {
+      if ((y % 2 === 0) !== (parity === 'even')) continue;
+      var d = new Date(y, mm - 1, dd);
+      if (d.getMonth() !== mm - 1) continue; // 29 Feb in a non-leap year
+      if (d >= start) return d;
+    }
+    return null;
+  }
+
+  /**
+   * Every date whose English or Japanese titles contain the query.
+   * @param {{en: Object, ja: Object}} titleTable data/titles.js
+   * @param {string} query already passed through normalizeForSearch()
+   * @returns {{even: Match[], odd: Match[]}} in table order, where
+   *   Match = {key: "MM-DD", hits: [{slot, en, ja, hitJa}]}
+   */
+  function findTitleMatches(titleTable, query) {
+    var result = {};
+    ['even', 'odd'].forEach(function (parity) {
+      var en = titleTable.en[parity];
+      var ja = titleTable.ja[parity];
+      result[parity] = [];
+      Object.keys(en).forEach(function (key) {
+        var rowEn = en[key] || [];
+        var rowJa = ja[key] || [];
+        var hits = [];
+        for (var i = 0; i < Math.max(rowEn.length, rowJa.length); i++) {
+          var e = rowEn[i] || '';
+          var j = rowJa[i] || '';
+          var hitEn = e && normalizeForSearch(e).indexOf(query) !== -1;
+          var hitJa = j && normalizeForSearch(j).indexOf(query) !== -1;
+          if (hitEn || hitJa) hits.push({ slot: i, en: e, ja: j, hitJa: !!hitJa });
+        }
+        if (hits.length) result[parity].push({ key: key, hits: hits });
+      });
+    });
+    return result;
+  }
+
   return {
     FRAMES: FRAMES,
     FRAMES_LEAP: FRAMES_LEAP,
+    FRAME_PAD_RATIO: FRAME_PAD_RATIO,
+    FRAME_BG: FRAME_BG,
+    MIN_PHONE_DIGITS: MIN_PHONE_DIGITS,
+    normalizePhone: normalizePhone,
+    startOfDay: startOfDay,
+    addDays: addDays,
+    normalizeForSearch: normalizeForSearch,
+    nextOccurrence: nextOccurrence,
+    findTitleMatches: findTitleMatches,
     isLeapYear: isLeapYear,
     dayOfYear: dayOfYear,
     toISODate: toISODate,
