@@ -13,6 +13,7 @@
     followToday: true, // keep tracking the system date across midnight
     daily: null,
     groups: [],
+    messageEdited: false, // the user typed in the message box since the last reset
   };
 
   // -------------------------------------------------------------------------
@@ -43,6 +44,11 @@
   }
 
   function sameDay(a, b) { return D.toISODate(a) === D.toISODate(b); }
+
+  // Screen readers read this out; focus stays on whatever was pressed.
+  function announce(text) {
+    $('sr-status').textContent = text;
+  }
 
   function jaSpan(text) {
     var span = document.createElement('span');
@@ -204,6 +210,7 @@
       history.replaceState(null, '', state.followToday ? location.pathname : '#' + iso);
     }
     render();
+    announce(D.longDate(date));
   }
 
   function render() {
@@ -217,7 +224,7 @@
 
     var img = $('frame-img');
     img.src = daily.frameImage;
-    img.alt = daily.frameLabel + ' frame';
+    img.alt = ''; // the caption already names the frame
     $('frame-name').textContent = daily.frameLabel;
 
     var list = $('title-list');
@@ -240,7 +247,12 @@
     $('bingo-title').textContent = daily.bingo || '';
     $('bingo-title-ja').textContent = daily.bingoJa || '';
 
-    setMessage(D.formatMessage(daily, { japanese: showJapanese() }));
+    // Don't throw away the user's edits; say how to get the new text instead.
+    if (state.messageEdited) {
+      $('msg-note').hidden = false;
+    } else {
+      setMessage(D.formatMessage(daily, { japanese: showJapanese() }));
+    }
     document.title = 'WMMT Daily — ' + daily.date;
   }
 
@@ -288,6 +300,7 @@
   function flash(btn, text) {
     var original = btn.dataset.label || (btn.dataset.label = btn.textContent);
     btn.textContent = text;
+    announce(text);
     setTimeout(function () { btn.textContent = original; }, 1800);
   }
 
@@ -416,7 +429,7 @@
       var li = document.createElement('li');
       li.innerHTML =
         '<label><input type="checkbox"><span class="name"></span></label>' +
-        '<span class="meta"></span><button type="button" class="remove" aria-label="Remove">×</button>';
+        '<span class="meta"></span><button type="button" class="remove" >×</button>';
       var cb = li.querySelector('input');
       cb.checked = n.selected !== false;
       cb.addEventListener('change', function () {
@@ -426,6 +439,7 @@
       });
       li.querySelector('.name').textContent = n.name || n.number;
       li.querySelector('.meta').textContent = n.name ? n.number : '';
+      li.querySelector('.remove').setAttribute('aria-label', 'Remove ' + (n.name || n.number));
       li.querySelector('.remove').addEventListener('click', function () {
         var all = load(NUMBERS_KEY, []);
         all.splice(i, 1);
@@ -679,8 +693,13 @@
     setDate(dateFromHash() || today(), { fromHash: true });
   });
 
-  $('message').addEventListener('input', updateShareLink);
+  $('message').addEventListener('input', function () {
+    state.messageEdited = true;
+    updateShareLink();
+  });
   $('reset-msg').addEventListener('click', function () {
+    state.messageEdited = false;
+    $('msg-note').hidden = true;
     setMessage(D.formatMessage(state.daily, { japanese: showJapanese() }));
   });
 
@@ -699,7 +718,14 @@
   });
   $('copy-msg').addEventListener('click', function () {
     var btn = this;
-    navigator.clipboard.writeText($('message').value).then(function () { flash(btn, 'Copied'); });
+    // navigator.clipboard is missing on plain-http pages other than localhost.
+    var copied = navigator.clipboard
+      ? navigator.clipboard.writeText($('message').value)
+      : Promise.reject(new Error('Clipboard not available'));
+    copied.then(function () { flash(btn, 'Copied'); }).catch(function () {
+      $('message').select();
+      flash(btn, 'Copy failed — text selected, press Ctrl+C');
+    });
   });
   initImageSharing();
 

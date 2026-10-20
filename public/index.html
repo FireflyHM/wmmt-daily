@@ -16,6 +16,9 @@
   </header>
 
   <main class="wrap">
+    <!-- Announces date changes and button results to screen readers. -->
+    <p class="visually-hidden" id="sr-status" role="status"></p>
+
     <!-- Date picker -->
     <section class="date-bar" aria-label="Choose a date">
       <button type="button" class="btn icon" id="prev-day" aria-label="Previous day">&#8249;</button>
@@ -27,7 +30,7 @@
     </section>
 
     <!-- Selected day -->
-    <section class="card day-card" aria-live="polite">
+    <section class="card day-card" aria-labelledby="day-title">
       <div class="day-head">
         <h2 id="day-title">—</h2>
         <span class="pill" id="today-pill" hidden>Today</span>
@@ -57,7 +60,7 @@
     <!-- Title search -->
     <section class="card search-card">
       <h3>Search titles</h3>
-      <input type="search" id="title-search" placeholder="Search English or Japanese titles, e.g. tofu or 豆腐" autocomplete="off" aria-describedby="search-summary">
+      <input type="search" id="title-search" aria-label="Search titles" placeholder="Search English or Japanese titles, e.g. tofu or 豆腐" autocomplete="off" aria-describedby="search-summary">
       <p class="hint" id="search-summary">Searches every date in the even-year and odd-year title tables. Click a date to open it.</p>
       <div class="search-results" id="search-results" hidden>
         <div class="search-col">
@@ -76,7 +79,8 @@
       <h3>Send to WhatsApp</h3>
 
       <label class="label" for="message">Message</label>
-      <textarea id="message" rows="13" spellcheck="false"></textarea>
+      <textarea id="message" rows="13" spellcheck="false" aria-describedby="msg-note"></textarea>
+      <p class="hint" id="msg-note" hidden>You have edited the message, so it was not updated for the new date or title settings. Press “Reset text” to update it.</p>
       <div class="row">
         <button type="button" class="btn" id="reset-msg">Reset text</button>
         <button type="button" class="btn" id="copy-msg">Copy text</button>
@@ -114,15 +118,15 @@
             <div>
               <span class="label">Individual numbers</span>
               <form id="add-number" class="row">
-                <input type="tel" id="number-input" placeholder="+60 12 345 6789" autocomplete="off">
-                <input type="text" id="number-name" placeholder="Name (optional)" autocomplete="off">
+                <input type="tel" id="number-input" aria-label="Phone number" placeholder="+60 12 345 6789" autocomplete="off">
+                <input type="text" id="number-name" aria-label="Name (optional)" placeholder="Name (optional)" autocomplete="off">
                 <button type="submit" class="btn">Add</button>
               </form>
               <ul class="pick-list" id="number-list"></ul>
             </div>
             <div>
               <span class="label">Groups <button type="button" class="link" id="reload-groups">refresh</button></span>
-              <input type="search" id="group-filter" placeholder="Filter groups…">
+              <input type="search" id="group-filter" aria-label="Filter groups" placeholder="Filter groups…">
               <ul class="pick-list" id="group-list"></ul>
             </div>
           </div>
