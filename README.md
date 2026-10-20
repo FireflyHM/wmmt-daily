@@ -28,7 +28,7 @@ On the static site you get:
 A static page can't log in to WhatsApp, so sending straight to saved numbers and groups needs the small local server:
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
@@ -40,4 +40,4 @@ Open <http://localhost:3000>. A **Push directly** panel appears there. Link What
 - If WhatsApp is disconnected at the scheduled time, the server keeps retrying for 15 minutes. After that, the send is marked as missed rather than sent late.
 
 - This uses [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial WhatsApp Web client. WhatsApp may restrict accounts that use unofficial clients, so keep it to small personal sends.
-- The linked session is saved in `.wa-auth/`, which is git-ignored. The server only listens on `127.0.0.1`.
+- The linked session is saved in `.wa-auth/`, which is git-ignored and, on macOS and Linux, readable only by your user account. Anyone with a copy of it can use your WhatsApp account, so don't share or sync the project folder while it holds one. The server only listens on `127.0.0.1`.

@@ -1,0 +1,13 @@
+# Weekly PRs for security fixes and updates. The server holds a WhatsApp
+# session, so a vulnerable or compromised dependency matters here.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
