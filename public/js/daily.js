@@ -155,7 +155,7 @@
     var date = fromISODate(daily.date);
     var withJa = function (en, ja) {
       if (!japanese || !ja) return en || ja;
-      return en ? en + '\n    _' + ja + '_' : ja;
+      return en ? en + '\n    ' + ja : ja;
     };
     var lines = [
       '🏁 *WMMT Daily* — ' + longDate(date),
