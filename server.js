@@ -294,6 +294,7 @@ app.post('/api/wa/send', async (req, res) => {
 const SCHEDULES_FILE = path.join(__dirname, 'schedules.json');
 const GRACE_MS = 15 * 60 * 1000;
 const MAX_SCHEDULES = 50;
+const startedAt = new Date();
 
 let schedules = [];
 try {
@@ -311,12 +312,19 @@ function atTime(date, hhmm) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m);
 }
 
-// When this schedule should fire next (null once a one-off has finished).
+// The earliest slot of this schedule that hasn't been sent or marked missed yet
+// (null once a one-off has finished). Daily schedules also look back to
+// yesterday, so a slot just before midnight keeps its full grace period and a
+// slot that went unhandled is still recorded as missed.
 function nextRun(s, now = new Date()) {
   if (s.repeat === 'once') return s.done ? null : atTime(Daily.fromISODate(s.date), s.time);
-  const today = atTime(now, s.time);
-  const handledToday = s.lastRunDate === Daily.toISODate(now);
-  if (!handledToday && now - today <= GRACE_MS) return today;
+  const created = s.createdAt ? new Date(s.createdAt) : null;
+  for (const offset of [-1, 0]) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+    const slot = atTime(day, s.time);
+    const handled = (s.lastRunDate || '') >= Daily.toISODate(day);
+    if (!handled && !(created && slot < created)) return slot;
+  }
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   return atTime(tomorrow, s.time);
 }
@@ -370,13 +378,13 @@ function checkSchedules() {
     if (!due || now < due) continue;
 
     if (now - due > GRACE_MS) {
-      // Only one-offs get here; nextRun() already rolls daily ones forward.
-      markMissed(s, due, now, 'the server was not running at the scheduled time');
+      // If the server was up at the scheduled time it kept retrying, but
+      // WhatsApp stayed disconnected for the whole grace period.
+      markMissed(s, due, now, due < startedAt
+        ? 'the server was not running at the scheduled time'
+        : 'WhatsApp was not connected');
     } else if (wa.state === 'open') {
       runSchedule(s, due, now);
-    } else if (now - due > GRACE_MS - 60 * 1000) {
-      // Kept retrying, but WhatsApp stayed disconnected for the whole grace period.
-      markMissed(s, due, now, 'WhatsApp was not connected');
     }
   }
 }
