@@ -24,6 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      # Pages lets browsers cache files for 10 minutes. Tag the page's CSS and
+      # scripts with this commit so a new index.html never runs with old ones.
+      - name: Version asset links
+        run: |
+          sed -i -E "s#(href|src)=\"((css|js|data)/[^\"?]+)\"#\1=\"\2?v=${GITHUB_SHA::7}\"#g" public/index.html
+          grep -E '\?v=' public/index.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: public
