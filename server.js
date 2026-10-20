@@ -284,15 +284,36 @@ const SCHEDULES_FILE = path.join(__dirname, 'schedules.json');
 const GRACE_MS = 15 * 60 * 1000;
 const MAX_SCHEDULES = 50;
 
-let schedules = [];
-try {
-  schedules = JSON.parse(fs.readFileSync(SCHEDULES_FILE, 'utf8'));
-} catch {
-  schedules = [];
+function loadSchedules() {
+  let raw;
+  try {
+    raw = fs.readFileSync(SCHEDULES_FILE, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
+  try {
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) throw new Error('expected an array');
+    return list;
+  } catch (err) {
+    // Keep the unreadable file rather than overwriting it on the next save.
+    const backup = SCHEDULES_FILE + '.corrupt-' + Date.now();
+    fs.copyFileSync(SCHEDULES_FILE, backup);
+    console.error('[schedule] could not read %s (%s); saved a copy as %s and starting with no schedules',
+      SCHEDULES_FILE, err.message, backup);
+    return [];
+  }
 }
 
+let schedules = loadSchedules();
+
+// Write to a temp file and rename it into place, so a crash mid-write can't
+// leave a truncated schedules.json behind.
 function saveSchedules() {
-  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedules, null, 2));
+  const tmp = SCHEDULES_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(schedules, null, 2));
+  fs.renameSync(tmp, SCHEDULES_FILE);
 }
 
 function atTime(date, hhmm) {
@@ -331,6 +352,8 @@ async function runSchedule(s, due, now) {
   s.lastRunDate = Daily.toISODate(day);
   if (s.repeat === 'once') s.done = true;
   try {
+    // Save before sending, so a crash part-way through can't resend after a restart.
+    saveSchedules();
     const daily = Daily.getDaily(day, TITLES);
     const text = Daily.formatMessage(daily, { japanese: s.japanese });
     const results = await sendDaily({
