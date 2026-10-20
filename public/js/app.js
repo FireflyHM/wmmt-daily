@@ -31,10 +31,10 @@
     try {
       var v = localStorage.getItem(key);
       return v ? JSON.parse(v) : fallback;
-    } catch (e) { return fallback; }
+    } catch { return fallback; }
   }
   function save(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
   }
 
   // -------------------------------------------------------------------------
@@ -480,7 +480,7 @@
       });
     }).catch(function (err) {
       $('send-summary').textContent = 'Send failed: ' + err.message;
-    }).then(function () {
+    }).finally(function () {
       btn.disabled = false;
     });
   }
@@ -521,6 +521,7 @@
       del.className = 'btn ghost';
       del.textContent = 'Delete';
       del.addEventListener('click', function () {
+        // eslint-disable-next-line no-alert -- deleting can't be undone
         if (!confirm('Delete this scheduled send?')) return;
         api('/api/schedules/' + encodeURIComponent(s.id), { method: 'DELETE' })
           .then(loadSchedules)
@@ -640,8 +641,11 @@
       });
     });
     $('wa-logout').addEventListener('click', function () {
+      // eslint-disable-next-line no-alert -- unlinking needs a fresh QR scan to undo
       if (!confirm('Unlink this WhatsApp account from WMMT Daily?')) return;
-      api('/api/wa/logout', { method: 'POST' }).then(pollStatus);
+      api('/api/wa/logout', { method: 'POST' }).then(pollStatus).catch(function (e) {
+        $('wa-status-text').textContent = 'Could not unlink: ' + e.message;
+      });
     });
     $('reload-groups').addEventListener('click', loadGroups);
     $('group-filter').addEventListener('input', renderGroups);
@@ -658,7 +662,7 @@
   function dateFromHash() {
     var m = /^#(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
     if (!m) return null;
-    try { return D.fromISODate(m[1]); } catch (e) { return null; }
+    try { return D.fromISODate(m[1]); } catch { return null; }
   }
 
   // Show the date in the URL hash. A missing or invalid hash falls back to
