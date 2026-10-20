@@ -115,7 +115,7 @@ h4 { margin: 0 0 10px; font-size: 15px; }
   cursor: pointer; text-decoration: underline;
 }
 
-input[type="date"], input[type="tel"], input[type="text"], input[type="search"], textarea {
+input[type="date"], input[type="time"], input[type="tel"], input[type="text"], input[type="search"], textarea {
   min-height: 38px;
   padding: 7px 10px;
   border: 1px solid var(--border);
@@ -224,6 +224,26 @@ mark { background: var(--gold-bg); color: inherit; border-radius: 3px; padding: 
 .pick-list .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .pick-list .remove { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
 .check { display: flex; gap: 8px; align-items: center; margin-top: 14px; cursor: pointer; }
+
+select {
+  min-height: 38px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+#sched-form { margin-top: 10px; }
+.sched-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.sched-list:empty::after { content: attr(data-empty); display: block; color: var(--muted); font-size: 13px; }
+.sched-list > li {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: start;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+}
+.sched-list .when { font-weight: 700; }
+.sched-list .who, .sched-list .meta { font-size: 13px; color: var(--muted); grid-column: 1; }
+.sched-list .last.ok { color: var(--ok); }
+.sched-list .last.err { color: var(--err); }
+.sched-list .btn { grid-column: 2; grid-row: 1 / span 3; }
+.sched-list li.done { opacity: 0.7; }
 
 .results { list-style: none; padding: 0; margin: 10px 0 0; font-size: 14px; }
 .results li.ok::before { content: "✓ "; color: var(--ok); font-weight: 700; }

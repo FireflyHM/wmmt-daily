@@ -135,6 +135,30 @@
           <ul id="send-results" class="results"></ul>
         </div>
       </div>
+
+      <div class="divider"></div>
+
+      <h4>Scheduled sends</h4>
+      <div id="sched-form-wrap">
+        <p class="hint">
+          Sends the frame and that day's titles to the numbers and groups ticked above, using the
+          “Attach the frame image” and “Show Japanese titles” settings as they are when you add it.
+        </p>
+        <form id="sched-form" class="row">
+          <select id="sched-repeat" aria-label="Repeat">
+            <option value="daily">Every day</option>
+            <option value="once">Once</option>
+          </select>
+          <input type="date" id="sched-date" aria-label="Date" hidden>
+          <input type="time" id="sched-time" aria-label="Time" value="08:00" required>
+          <button type="submit" class="btn primary">Add schedule</button>
+          <span id="sched-msg" class="hint"></span>
+        </form>
+      </div>
+      <p class="hint" id="sched-need-link">Link WhatsApp above to add a schedule.</p>
+      <ul class="sched-list" id="sched-list" data-empty="No scheduled sends yet"></ul>
+      <p class="hint">Scheduled sends only go out while <code>npm start</code> is running on this PC and WhatsApp is linked.
+        A send more than 15 minutes late is skipped and marked as missed.</p>
       </div>
     </section>
   </main>

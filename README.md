@@ -34,5 +34,10 @@ npm start
 
 Open <http://localhost:3000>. A **Push directly** panel appears there. Link WhatsApp by scanning the QR code (Settings → Linked devices), then tick the numbers or groups and press **Send**. Each message goes out as the frame image with the titles as its caption.
 
+**Scheduled sends:** under **Scheduled sends**, choose *Every day* or *Once*, set a time, and click **Add schedule**. Each send goes to the numbers and groups ticked at the time you add it. It includes the frame image and that day's titles, plus the Japanese titles if that option is on.
+
+- Schedules are saved in `schedules.json`, which is git-ignored. They only go out while `npm start` is running and WhatsApp is linked.
+- If WhatsApp is disconnected at the scheduled time, the server keeps retrying for 15 minutes. After that, the send is marked as missed rather than sent late.
+
 - This uses [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial WhatsApp Web client. WhatsApp may restrict accounts that use unofficial clients, so keep it to small personal sends.
 - The linked session is saved in `.wa-auth/`, which is git-ignored. The server only listens on `127.0.0.1`.

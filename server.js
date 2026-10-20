@@ -11,6 +11,7 @@ const fs = require('fs');
 const express = require('express');
 const QRCode = require('qrcode');
 const pino = require('pino');
+const sharp = require('sharp');
 const {
   default: makeWASocket,
   useMultiFileAuthState,
@@ -129,11 +130,11 @@ async function numberToJid(raw) {
 // ---------------------------------------------------------------------------
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '100kb' }));
 app.use(express.static(PUBLIC_DIR));
 
-// The WhatsApp endpoints act on your account, so refuse requests made by other websites.
-app.use('/api/wa', (req, res, next) => {
+// The API sends from your WhatsApp account, so refuse requests made by other websites.
+app.use('/api', (req, res, next) => {
   const origin = req.get('origin');
   if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) {
     return res.status(403).json({ error: 'Cross-origin request refused' });
@@ -192,40 +193,32 @@ app.get('/api/wa/groups', async (req, res) => {
   }
 });
 
-/*
- * body: {
- *   date: "YYYY-MM-DD",
- *   message?: string,          // edited text; defaults to the formatted message
- *   includeImage?: boolean,    // send the frame image with the message as caption
- *   image?: string,            // optional PNG/JPEG data URL to send instead of the raw frame file
- *   numbers?: string[],        // individual phone numbers (international format)
- *   groups?: string[],         // group JIDs from /api/wa/groups
- * }
+// ---------------------------------------------------------------------------
+// Sending
+// ---------------------------------------------------------------------------
+
+// Frame on a dark backing with a small border, so WhatsApp's re-encoding
+// doesn't fill the transparent centre with an arbitrary colour.
+async function frameImage(daily) {
+  const file = path.join(PUBLIC_DIR, daily.frameImage);
+  if (!fs.existsSync(file)) return null;
+  const { width } = await sharp(file).metadata();
+  const pad = Math.round(width * 0.06);
+  return sharp(file)
+    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: '#15171c' })
+    .flatten({ background: '#15171c' })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Sends the daily message to each number and group.
+ * @returns {Promise<Array<{target: string, kind: string, ok: boolean, error?: string}>>}
  */
-app.post('/api/wa/send', async (req, res) => {
-  if (!requireOpen(res)) return;
-  const { date, message, includeImage = true, image, numbers = [], groups = [] } = req.body || {};
-
-  let daily;
-  try {
-    daily = Daily.getDaily(date ? Daily.fromISODate(date) : new Date(), TITLES);
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-  if (!numbers.length && !groups.length) {
-    return res.status(400).json({ error: 'Pick at least one number or group.' });
-  }
-
-  const text = (typeof message === 'string' && message.trim()) || Daily.formatMessage(daily);
-  // Prefer the image the page rendered (frame on a dark backing); fall back to the raw frame file.
-  let imageBuffer = null;
-  if (includeImage) {
-    const m = typeof image === 'string' && /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(image);
-    const imagePath = path.join(PUBLIC_DIR, daily.frameImage);
-    if (m) imageBuffer = Buffer.from(m[2], 'base64');
-    else if (fs.existsSync(imagePath)) imageBuffer = fs.readFileSync(imagePath);
-  }
-  const content = imageBuffer ? { image: imageBuffer, caption: text } : { text };
+async function sendDaily({ daily, text, includeImage, numbers, groups }) {
+  if (wa.state !== 'open' || !wa.sock) throw new Error('WhatsApp is not connected');
+  const image = includeImage ? await frameImage(daily) : null;
+  const content = image ? { image, caption: text } : { text };
 
   const targets = [
     ...numbers.map((n) => ({ kind: 'number', label: n, resolve: () => numberToJid(n) })),
@@ -243,8 +236,203 @@ app.post('/api/wa/send', async (req, res) => {
       results.push({ target: t.label, kind: t.kind, ok: false, error: err.message });
     }
   }
-  res.json({ date: daily.date, results });
+  return results;
+}
+
+/*
+ * body: {
+ *   date: "YYYY-MM-DD",
+ *   message?: string,          // edited text; defaults to the formatted message
+ *   includeImage?: boolean,    // send the frame image with the message as caption
+ *   numbers?: string[],        // individual phone numbers (international format)
+ *   groups?: string[],         // group JIDs from /api/wa/groups
+ * }
+ */
+app.post('/api/wa/send', async (req, res) => {
+  if (!requireOpen(res)) return;
+  const { date, message, includeImage = true, numbers = [], groups = [] } = req.body || {};
+
+  let daily;
+  try {
+    daily = Daily.getDaily(date ? Daily.fromISODate(date) : new Date(), TITLES);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!numbers.length && !groups.length) {
+    return res.status(400).json({ error: 'Pick at least one number or group.' });
+  }
+
+  const text = (typeof message === 'string' && message.trim()) || Daily.formatMessage(daily);
+  try {
+    const results = await sendDaily({ daily, text, includeImage, numbers, groups });
+    res.json({ date: daily.date, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+// ---------------------------------------------------------------------------
+// Scheduled sends
+// ---------------------------------------------------------------------------
+//
+// A schedule sends the titles and frame for the day it fires on, so a daily
+// schedule always posts that day's titles. Schedules only run while this
+// server is running; one that is more than GRACE_MS late (server or WhatsApp
+// was off) is recorded as missed instead of being sent late.
+
+const SCHEDULES_FILE = path.join(__dirname, 'schedules.json');
+const GRACE_MS = 15 * 60 * 1000;
+const MAX_SCHEDULES = 50;
+
+let schedules = [];
+try {
+  schedules = JSON.parse(fs.readFileSync(SCHEDULES_FILE, 'utf8'));
+} catch {
+  schedules = [];
+}
+
+function saveSchedules() {
+  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(schedules, null, 2));
+}
+
+function atTime(date, hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m);
+}
+
+// When this schedule should fire next (null once a one-off has finished).
+function nextRun(s, now = new Date()) {
+  if (s.repeat === 'once') return s.done ? null : atTime(Daily.fromISODate(s.date), s.time);
+  const today = atTime(now, s.time);
+  const handledToday = s.lastRunDate === Daily.toISODate(now);
+  if (!handledToday && now - today <= GRACE_MS) return today;
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return atTime(tomorrow, s.time);
+}
+
+function scheduleView(s) {
+  const next = nextRun(s);
+  return { ...s, nextRun: next ? next.toISOString() : null };
+}
+
+function markMissed(s, due, now, reason) {
+  s.lastRunDate = Daily.toISODate(due);
+  if (s.repeat === 'once') s.done = true;
+  s.lastRun = { at: now.toISOString(), error: 'Missed — ' + reason };
+  saveSchedules();
+  console.log('[schedule] %s missed: %s', s.id, reason);
+}
+
+const running = new Set();
+
+async function runSchedule(s, due, now) {
+  running.add(s.id);
+  const day = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  s.lastRunDate = Daily.toISODate(day);
+  if (s.repeat === 'once') s.done = true;
+  try {
+    const daily = Daily.getDaily(day, TITLES);
+    const text = Daily.formatMessage(daily, { japanese: s.japanese });
+    const results = await sendDaily({
+      daily,
+      text,
+      includeImage: s.includeImage,
+      numbers: s.numbers.map((n) => n.number),
+      groups: s.groups.map((g) => g.id),
+    });
+    s.lastRun = { at: now.toISOString(), results };
+    console.log('[schedule] %s sent: %d/%d ok', s.id, results.filter((r) => r.ok).length, results.length);
+  } catch (err) {
+    s.lastRun = { at: now.toISOString(), error: err.message };
+    console.log('[schedule] %s failed: %s', s.id, err.message);
+  } finally {
+    running.delete(s.id);
+    saveSchedules();
+  }
+}
+
+function checkSchedules() {
+  const now = new Date();
+  for (const s of schedules) {
+    if (running.has(s.id)) continue;
+    const due = nextRun(s, now);
+    if (!due || now < due) continue;
+
+    if (now - due > GRACE_MS) {
+      // Only one-offs get here; nextRun() already rolls daily ones forward.
+      markMissed(s, due, now, 'the server was not running at the scheduled time');
+    } else if (wa.state === 'open') {
+      runSchedule(s, due, now);
+    } else if (now - due > GRACE_MS - 60 * 1000) {
+      // Kept retrying, but WhatsApp stayed disconnected for the whole grace period.
+      markMissed(s, due, now, 'WhatsApp was not connected');
+    }
+  }
+}
+
+function parseSchedule(body) {
+  const { repeat, time, date, numbers = [], groups = [], includeImage = true, japanese = false } = body || {};
+  if (repeat !== 'daily' && repeat !== 'once') throw new Error('Choose "Every day" or "Once"');
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time || '')) throw new Error('Pick a time');
+  const s = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    repeat,
+    time,
+    numbers: (Array.isArray(numbers) ? numbers : [])
+      .filter((n) => n && String(n.number).replace(/\D/g, '').length >= 7)
+      .map((n) => ({ number: String(n.number), name: String(n.name || '') })),
+    groups: (Array.isArray(groups) ? groups : [])
+      .filter((g) => g && /@g\.us$/.test(g.id))
+      .map((g) => ({ id: String(g.id), name: String(g.name || g.id) })),
+    includeImage: !!includeImage,
+    japanese: !!japanese,
+    createdAt: new Date().toISOString(),
+    lastRunDate: null,
+    lastRun: null,
+  };
+  if (!s.numbers.length && !s.groups.length) throw new Error('Tick at least one number or group');
+  if (repeat === 'once') {
+    let when;
+    try {
+      when = atTime(Daily.fromISODate(date), time);
+    } catch {
+      throw new Error('Pick a date');
+    }
+    if (when < new Date()) throw new Error('That time has already passed');
+    s.date = date;
+    s.done = false;
+  } else if (atTime(new Date(), time) <= new Date()) {
+    // Created after today's time: start tomorrow instead of firing straight away.
+    s.lastRunDate = Daily.toISODate(new Date());
+  }
+  return s;
+}
+
+app.get('/api/schedules', (req, res) => {
+  res.json(schedules.map(scheduleView));
+});
+
+app.post('/api/schedules', (req, res) => {
+  if (schedules.length >= MAX_SCHEDULES) return res.status(400).json({ error: 'Too many schedules' });
+  try {
+    const s = parseSchedule(req.body);
+    schedules.push(s);
+    saveSchedules();
+    res.json(scheduleView(s));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/schedules/:id', (req, res) => {
+  const before = schedules.length;
+  schedules = schedules.filter((s) => s.id !== req.params.id);
+  if (schedules.length === before) return res.status(404).json({ error: 'Schedule not found' });
+  saveSchedules();
+  res.json({ ok: true });
+});
+
+setInterval(checkSchedules, 20 * 1000);
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`WMMT Daily running at http://localhost:${PORT}`);

@@ -279,15 +279,6 @@
     });
   }
 
-  function blobToDataURL(blob) {
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () { resolve(reader.result); };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
   function frameFile(daily) {
     return frameImageBlob(daily).then(function (blob) {
       return new File([blob], 'wmmt-frame-' + daily.date + '-' + daily.frame + '.png', { type: 'image/png' });
@@ -373,6 +364,8 @@
     $('wa-qr').hidden = s.state !== 'qr' || !s.qr;
     if (s.qr) $('wa-qr-img').src = s.qr;
     $('wa-targets').hidden = s.state !== 'open';
+    $('sched-form-wrap').hidden = s.state !== 'open';
+    $('sched-need-link').hidden = s.state === 'open';
 
     if (s.state === 'open' && lastWaState !== 'open') loadGroups();
     lastWaState = s.state;
@@ -443,12 +436,23 @@
     });
   }
 
+  // Numbers and groups currently ticked, with display names.
+  function selectedTargets() {
+    var selectedIds = load(SELECTED_GROUPS_KEY, []);
+    return {
+      numbers: load(NUMBERS_KEY, [])
+        .filter(function (n) { return n.selected !== false; })
+        .map(function (n) { return { number: n.number, name: n.name || '' }; }),
+      groups: state.groups
+        .filter(function (g) { return selectedIds.indexOf(g.id) !== -1; })
+        .map(function (g) { return { id: g.id, name: g.name }; }),
+    };
+  }
+
   function send() {
-    var numbers = load(NUMBERS_KEY, [])
-      .filter(function (n) { return n.selected !== false; })
-      .map(function (n) { return n.number; });
-    var groups = load(SELECTED_GROUPS_KEY, [])
-      .filter(function (id) { return state.groups.some(function (g) { return g.id === id; }); });
+    var targets = selectedTargets();
+    var numbers = targets.numbers.map(function (n) { return n.number; });
+    var groups = targets.groups.map(function (g) { return g.id; });
     var groupName = function (id) {
       var g = state.groups.find(function (x) { return x.id === id; });
       return g ? g.name : id;
@@ -465,23 +469,15 @@
     btn.disabled = true;
     $('send-summary').textContent = 'Sending to ' + (numbers.length + groups.length) + ' chat(s)…';
 
-    var includeImage = $('include-image').checked;
-    var image = includeImage
-      ? frameImageBlob(state.daily).then(blobToDataURL).catch(function () { return null; })
-      : Promise.resolve(null);
-
-    image.then(function (dataUrl) {
-      return api('/api/wa/send', {
-        method: 'POST',
-        body: JSON.stringify({
-          date: state.daily.date,
-          message: $('message').value,
-          includeImage: includeImage,
-          image: dataUrl,
-          numbers: numbers,
-          groups: groups,
-        }),
-      });
+    api('/api/wa/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: state.daily.date,
+        message: $('message').value,
+        includeImage: $('include-image').checked,
+        numbers: numbers,
+        groups: groups,
+      }),
     }).then(function (res) {
       var ok = res.results.filter(function (r) { return r.ok; }).length;
       $('send-summary').textContent = 'Sent ' + ok + ' of ' + res.results.length + '.';
@@ -499,6 +495,122 @@
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Scheduled sends
+  // -------------------------------------------------------------------------
+  function fmtDateTime(iso) {
+    return new Date(iso).toLocaleString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+  }
+
+  function describeTargets(s) {
+    var names = s.numbers.map(function (n) { return n.name || n.number; })
+      .concat(s.groups.map(function (g) { return g.name; }));
+    return 'To: ' + names.join(', ');
+  }
+
+  function renderSchedules(list) {
+    var ul = $('sched-list');
+    ul.innerHTML = '';
+    list.forEach(function (s) {
+      var li = document.createElement('li');
+      if (s.repeat === 'once' && s.done) li.className = 'done';
+
+      var when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = s.repeat === 'daily'
+        ? 'Every day at ' + s.time
+        : 'Once on ' + D.fromISODate(s.date).toLocaleDateString('en-GB', {
+          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+        }) + ' at ' + s.time;
+      li.appendChild(when);
+
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn ghost';
+      del.textContent = 'Delete';
+      del.addEventListener('click', function () {
+        if (!confirm('Delete this scheduled send?')) return;
+        api('/api/schedules/' + encodeURIComponent(s.id), { method: 'DELETE' })
+          .then(loadSchedules)
+          .catch(function (e) { $('sched-msg').textContent = e.message; });
+      });
+      li.appendChild(del);
+
+      var who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = describeTargets(s) + ' · ' +
+        (s.includeImage ? 'with frame image' : 'text only') + (s.japanese ? ' · with Japanese' : '');
+      li.appendChild(who);
+
+      var meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = s.nextRun ? 'Next: ' + fmtDateTime(s.nextRun) : 'Finished';
+      if (s.lastRun) {
+        var last = document.createElement('span');
+        var ok = s.lastRun.results ? s.lastRun.results.filter(function (r) { return r.ok; }).length : 0;
+        var total = s.lastRun.results ? s.lastRun.results.length : 0;
+        var good = !s.lastRun.error && ok === total;
+        last.className = 'last ' + (good ? 'ok' : 'err');
+        last.textContent = ' · Last: ' + fmtDateTime(s.lastRun.at) + ' — ' +
+          (s.lastRun.error || ('sent ' + ok + ' of ' + total));
+        if (s.lastRun.results) {
+          last.title = s.lastRun.results.map(function (r) {
+            return (r.ok ? '✓ ' : '✕ ') + r.target + (r.ok ? '' : ' — ' + r.error);
+          }).join('\n');
+        }
+        meta.appendChild(last);
+      }
+      li.appendChild(meta);
+      ul.appendChild(li);
+    });
+  }
+
+  function loadSchedules() {
+    return api('/api/schedules').then(renderSchedules).catch(function () { /* server gone */ });
+  }
+
+  function addSchedule(e) {
+    e.preventDefault();
+    var repeat = $('sched-repeat').value;
+    var targets = selectedTargets();
+    var msg = $('sched-msg');
+    if (!targets.numbers.length && !targets.groups.length) {
+      msg.textContent = 'Tick at least one number or group above.';
+      return;
+    }
+    api('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify({
+        repeat: repeat,
+        time: $('sched-time').value,
+        date: repeat === 'once' ? $('sched-date').value : undefined,
+        numbers: targets.numbers,
+        groups: targets.groups,
+        includeImage: $('include-image').checked,
+        japanese: showJapanese(),
+      }),
+    }).then(function (s) {
+      msg.textContent = 'Scheduled. Next send: ' + fmtDateTime(s.nextRun) + '.';
+      loadSchedules();
+    }).catch(function (err) {
+      msg.textContent = err.message;
+    });
+  }
+
+  function initSchedules() {
+    $('sched-repeat').addEventListener('change', function () {
+      var once = this.value === 'once';
+      $('sched-date').hidden = !once;
+      $('sched-date').required = once;
+      if (once && !$('sched-date').value) $('sched-date').value = D.toISODate(today());
+    });
+    $('sched-form').addEventListener('submit', addSchedule);
+    loadSchedules();
+    setInterval(loadSchedules, 30000);
+  }
+
   function initWhatsApp() {
     // The direct-send panel only works when served by the optional local server
     // (server.js). On static hosting such as GitHub Pages it stays hidden.
@@ -509,6 +621,7 @@
       $('push-hint').hidden = false;
       renderStatus(s);
       pollStatus();
+      initSchedules();
     }).catch(function () { /* static server: no direct push */ });
 
     $('wa-connect').addEventListener('click', function () {
