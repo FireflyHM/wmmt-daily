@@ -22,6 +22,8 @@
       <input type="date" id="date-input" aria-label="Date">
       <button type="button" class="btn icon" id="next-day" aria-label="Next day">&#8250;</button>
       <button type="button" class="btn" id="today-btn">Today</button>
+      <span class="spacer"></span>
+      <label class="check toggle"><input type="checkbox" id="show-ja"> Show Japanese titles <span lang="ja">日本語</span></label>
     </section>
 
     <!-- Selected day -->
@@ -46,6 +48,7 @@
           <div class="bingo" id="bingo-box" hidden>
             <span class="label">6RR bingo title</span>
             <strong id="bingo-title"></strong>
+            <span class="ja" lang="ja" id="bingo-title-ja"></span>
           </div>
         </div>
       </div>
@@ -55,6 +58,23 @@
     <section class="week">
       <h3>Next 7 days</h3>
       <div class="week-strip" id="week-strip"></div>
+    </section>
+
+    <!-- Title search -->
+    <section class="card search-card">
+      <h3>Search titles</h3>
+      <input type="search" id="title-search" placeholder="Search English or Japanese titles, e.g. tofu or 豆腐" autocomplete="off" aria-describedby="search-summary">
+      <p class="hint" id="search-summary">Searches every date in the even-year and odd-year title tables. Click a date to open it.</p>
+      <div class="search-results" id="search-results" hidden>
+        <div class="search-col">
+          <h4>Even years <span class="count" id="count-even"></span></h4>
+          <ul class="result-list" id="results-even"></ul>
+        </div>
+        <div class="search-col">
+          <h4>Odd years <span class="count" id="count-odd"></span></h4>
+          <ul class="result-list" id="results-odd"></ul>
+        </div>
+      </div>
     </section>
 
     <!-- WhatsApp -->

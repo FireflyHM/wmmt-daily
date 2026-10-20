@@ -44,6 +44,158 @@
 
   function sameDay(a, b) { return D.toISODate(a) === D.toISODate(b); }
 
+  function jaSpan(text) {
+    var span = document.createElement('span');
+    span.className = 'ja';
+    span.lang = 'ja';
+    span.textContent = text;
+    return span;
+  }
+
+  // -------------------------------------------------------------------------
+  // Japanese titles toggle
+  // -------------------------------------------------------------------------
+  var SHOW_JA_KEY = 'wmmt-daily.showJa';
+
+  function showJapanese() { return $('show-ja').checked; }
+
+  function applyJapanese() {
+    document.body.classList.toggle('show-ja', showJapanese());
+  }
+
+  // -------------------------------------------------------------------------
+  // Title search
+  // -------------------------------------------------------------------------
+  var SLOT_LABELS = ['#1', '#2', '#3', '#4', '#5', '#6', 'Bingo'];
+  var MAX_DATES_PER_PARITY = 150;
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // Case/width-insensitive form: "ＴＯＦＵ" and "tofu" match, as do full/half-width kana.
+  function norm(s) { return String(s).normalize('NFKC').toLowerCase(); }
+
+  // Next date (from today) on this month-day in a year of the given parity.
+  function nextOccurrence(parity, key) {
+    var mm = Number(key.slice(0, 2));
+    var dd = Number(key.slice(3));
+    var t = today();
+    for (var y = t.getFullYear(); y < t.getFullYear() + 12; y++) {
+      if ((y % 2 === 0) !== (parity === 'even')) continue;
+      var d = new Date(y, mm - 1, dd);
+      if (d.getMonth() !== mm - 1) continue; // 29 Feb in a non-leap year
+      if (d >= t) return d;
+    }
+    return null;
+  }
+
+  // Wrap each case-insensitive occurrence of the query in <mark>.
+  function highlight(el, text, q) {
+    var lower = norm(text);
+    // NFKC can change length (e.g. half-width kana), so only highlight when it's 1:1.
+    if (lower.length !== text.length || !q) {
+      el.textContent = text;
+      return;
+    }
+    var i = 0;
+    var at;
+    while ((at = lower.indexOf(q, i)) !== -1) {
+      el.appendChild(document.createTextNode(text.slice(i, at)));
+      var mark = document.createElement('mark');
+      mark.textContent = text.slice(at, at + q.length);
+      el.appendChild(mark);
+      i = at + q.length;
+    }
+    el.appendChild(document.createTextNode(text.slice(i)));
+  }
+
+  function search(query) {
+    var q = norm(query.trim());
+    var box = $('search-results');
+    if (!q) {
+      box.hidden = true;
+      $('search-summary').textContent =
+        'Searches every date in the even-year and odd-year title tables. Click a date to open it.';
+      return;
+    }
+
+    var total = 0;
+    ['even', 'odd'].forEach(function (parity) {
+      var en = TITLES.en[parity];
+      var ja = TITLES.ja[parity];
+      var list = $('results-' + parity);
+      list.innerHTML = '';
+      var dates = 0;
+      var titles = 0;
+
+      Object.keys(en).forEach(function (key) {
+        var rowEn = en[key] || [];
+        var rowJa = ja[key] || [];
+        var hits = [];
+        for (var i = 0; i < Math.max(rowEn.length, rowJa.length); i++) {
+          var e = rowEn[i] || '';
+          var j = rowJa[i] || '';
+          var hitEn = e && norm(e).indexOf(q) !== -1;
+          var hitJa = j && norm(j).indexOf(q) !== -1;
+          if (hitEn || hitJa) hits.push({ slot: i, en: e, ja: j, hitJa: hitJa });
+        }
+        if (!hits.length) return;
+        dates++;
+        titles += hits.length;
+        if (dates > MAX_DATES_PER_PARITY) return;
+
+        var li = document.createElement('li');
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'result-date';
+        var mm = Number(key.slice(0, 2));
+        btn.textContent = Number(key.slice(3)) + ' ' + MONTHS[mm - 1];
+        var next = nextOccurrence(parity, key);
+        if (next) {
+          btn.title = 'Open ' + D.longDate(next);
+          btn.addEventListener('click', function () {
+            setDate(next);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        } else {
+          btn.disabled = true;
+        }
+        li.appendChild(btn);
+
+        var ul = document.createElement('ul');
+        hits.forEach(function (h) {
+          var row = document.createElement('li');
+          var slot = document.createElement('span');
+          slot.className = 'slot' + (h.slot === 6 ? ' bingo' : '');
+          slot.textContent = SLOT_LABELS[h.slot] || '#' + (h.slot + 1);
+          var text = document.createElement('span');
+          if (h.en) highlight(text, h.en, q);
+          if (h.ja) {
+            var jaEl = jaSpan('');
+            // Always show the Japanese text when that's where the match is.
+            if (h.hitJa) jaEl.classList.add('hit');
+            highlight(jaEl, h.ja, q);
+            text.appendChild(jaEl);
+          }
+          row.appendChild(slot);
+          row.appendChild(text);
+          ul.appendChild(row);
+        });
+        li.appendChild(ul);
+        list.appendChild(li);
+      });
+
+      $('count-' + parity).textContent = dates
+        ? dates + ' date' + (dates === 1 ? '' : 's') + ', ' + titles + ' title' + (titles === 1 ? '' : 's') +
+          (dates > MAX_DATES_PER_PARITY ? ' (first ' + MAX_DATES_PER_PARITY + ' shown)' : '')
+        : '';
+      total += titles;
+    });
+
+    box.hidden = false;
+    $('search-summary').textContent = total
+      ? total + ' matching title' + (total === 1 ? '' : 's') + ' for “' + query.trim() + '”. Click a date to open its next occurrence.'
+      : 'No titles match “' + query.trim() + '”.';
+  }
+
   function setDate(date, opts) {
     state.date = date;
     state.followToday = sameDay(date, today());
@@ -71,9 +223,10 @@
     var list = $('title-list');
     list.innerHTML = '';
     if (daily.titles.length) {
-      daily.titles.forEach(function (t) {
+      daily.titles.forEach(function (t, i) {
         var li = document.createElement('li');
-        li.textContent = t;
+        li.appendChild(document.createTextNode(t));
+        if (daily.titlesJa[i]) li.appendChild(jaSpan(daily.titlesJa[i]));
         list.appendChild(li);
       });
     } else {
@@ -82,11 +235,13 @@
       list.appendChild(li);
     }
 
-    $('bingo-box').hidden = !daily.bingo;
+    // Some dates only list a bingo title on the Japanese side.
+    $('bingo-box').hidden = !daily.bingo && !(showJapanese() && daily.bingoJa);
     $('bingo-title').textContent = daily.bingo || '';
+    $('bingo-title-ja').textContent = daily.bingoJa || '';
 
     renderWeek();
-    setMessage(D.formatMessage(daily));
+    setMessage(D.formatMessage(daily, { japanese: showJapanese() }));
     document.title = 'WMMT Daily — ' + daily.date;
   }
 
@@ -435,7 +590,23 @@
   });
 
   $('message').addEventListener('input', updateShareLink);
-  $('reset-msg').addEventListener('click', function () { setMessage(D.formatMessage(state.daily)); });
+  $('reset-msg').addEventListener('click', function () {
+    setMessage(D.formatMessage(state.daily, { japanese: showJapanese() }));
+  });
+
+  $('show-ja').checked = load(SHOW_JA_KEY, false);
+  applyJapanese();
+  $('show-ja').addEventListener('change', function () {
+    save(SHOW_JA_KEY, showJapanese());
+    applyJapanese();
+    render();
+  });
+
+  var searchTimer = null;
+  $('title-search').addEventListener('input', function (e) {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { search(e.target.value); }, 150);
+  });
   $('copy-msg').addEventListener('click', function () {
     var btn = this;
     navigator.clipboard.writeText($('message').value).then(function () { flash(btn, 'Copied'); });

@@ -16,6 +16,12 @@ On the static site you get:
 - **Share text in WhatsApp…** opens WhatsApp with the message filled in. You then pick any contact or group.
 - **Share with image…** sends the frame image and the text together through your device's share menu. It shows on phones and in Chrome/Edge on Windows and macOS.
 - **Copy frame image** lets you paste the image into WhatsApp Web or the desktop app.
+- **Show Japanese titles** adds the Japanese name under each title, on the page and in the WhatsApp message.
+- **Search titles** looks through every date's English and Japanese titles. Results are grouped into even and odd years, then by date. Click a date to open its next occurrence.
+
+## Updating the title data
+
+`public/data/titles.js` is generated from the wiki. To rebuild it, run `node tools/build-titles.js`. This downloads the 24 month pages, about 30 seconds.
 
 ## Optional: push directly from your PC
 

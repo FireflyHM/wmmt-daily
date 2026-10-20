@@ -110,21 +110,29 @@
     return base + ' ' + m[2];
   }
 
+  function titleRow(titleTable, lang, parity, key) {
+    var t = titleTable && titleTable[lang] && titleTable[lang][parity];
+    return (t && t[key]) || [];
+  }
+
   /**
    * Everything shown for one date.
    * @param {Date} date
-   * @param {{even: Object, odd: Object}} titleTable parsed titles.json
+   * @param {{en: Object, ja: Object}} titleTable data/titles.js
    */
   function getDaily(date, titleTable) {
     var parity = date.getFullYear() % 2 === 0 ? 'even' : 'odd';
     var key = pad(date.getMonth() + 1) + '-' + pad(date.getDate());
-    var row = (titleTable && titleTable[parity] && titleTable[parity][key]) || [];
+    var row = titleRow(titleTable, 'en', parity, key);
+    var rowJa = titleRow(titleTable, 'ja', parity, key);
     var frame = frameFor(date);
     return {
       date: toISODate(date),
       parity: parity,
       titles: row.slice(0, 6),
       bingo: row[6] || null,
+      titlesJa: rowJa.slice(0, 6),
+      bingoJa: rowJa[6] || null,
       frame: frame,
       frameLabel: frameLabel(frame),
       frameImage: 'img/frames/' + frame + '.png',
@@ -137,23 +145,33 @@
     });
   }
 
-  // Plain-text message for WhatsApp (uses *bold* / _italic_ markup).
-  function formatMessage(daily) {
+  /**
+   * Plain-text message for WhatsApp (uses *bold* / _italic_ markup).
+   * @param {Object} daily from getDaily()
+   * @param {{japanese?: boolean}} [opts] add the Japanese title under each one
+   */
+  function formatMessage(daily, opts) {
+    var japanese = !!(opts && opts.japanese);
     var date = fromISODate(daily.date);
+    var withJa = function (en, ja) {
+      if (!japanese || !ja) return en || ja;
+      return en ? en + '\n    _' + ja + '_' : ja;
+    };
     var lines = [
       '🏁 *WMMT Daily* — ' + longDate(date),
       '',
       '🖼️ *Bingo frame:* ' + daily.frameLabel,
       '',
-      '🏆 *Daily titles (overseas):*',
+      '🏆 *Daily titles (overseas' + (japanese ? ' / Japanese' : '') + '):*',
     ];
     if (daily.titles.length) {
-      daily.titles.forEach(function (t, i) { lines.push((i + 1) + '. ' + t); });
+      daily.titles.forEach(function (t, i) { lines.push((i + 1) + '. ' + withJa(t, daily.titlesJa[i])); });
     } else {
       lines.push('_No title data for this date_');
     }
-    if (daily.bingo) {
-      lines.push('', '🎯 *6RR Bingo title:* ' + daily.bingo);
+    var bingo = withJa(daily.bingo, japanese ? daily.bingoJa : null);
+    if (bingo) {
+      lines.push('', '🎯 *6RR Bingo title:* ' + bingo);
     }
     return lines.join('\n');
   }
