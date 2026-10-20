@@ -92,10 +92,18 @@
     return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
   }
 
+  // Throws on anything that isn't a real calendar date, rather than letting
+  // Date roll "2026-02-31" over to 3 March.
   function fromISODate(iso) {
-    var p = String(iso).split('-').map(Number);
-    if (p.length !== 3 || p.some(isNaN)) throw new Error('Invalid date: ' + iso);
-    return new Date(p[0], p[1] - 1, p[2]);
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+    if (!m) throw new Error('Invalid date: ' + iso);
+    var y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+    var date = new Date(2000, mo - 1, d);
+    date.setFullYear(y); // the constructor maps years 0-99 to 1900-1999
+    if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) {
+      throw new Error('Invalid date: ' + iso);
+    }
+    return date;
   }
 
   function frameFor(date) {
