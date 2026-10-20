@@ -162,7 +162,7 @@
       '',
       '🖼️ *Bingo frame:* ' + daily.frameLabel,
       '',
-      '🏆 *Daily titles (overseas' + (japanese ? ' / Japanese' : '') + '):*',
+      '🏆 *Daily Titles:*',
     ];
     if (daily.titles.length) {
       daily.titles.forEach(function (t, i) { lines.push((i + 1) + '. ' + withJa(t, daily.titlesJa[i])); });
