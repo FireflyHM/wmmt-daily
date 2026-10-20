@@ -44,6 +44,10 @@ async function connectWhatsApp() {
   wa.state = 'connecting';
   wa.error = null;
 
+  // The session keys in here give full access to the WhatsApp account, so keep
+  // the folder private to this user (no effect on Windows, which uses ACLs).
+  fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 });
+  fs.chmodSync(AUTH_DIR, 0o700);
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   let version;
   try {
@@ -76,7 +80,7 @@ async function connectWhatsApp() {
       wa.state = 'open';
       wa.qr = null;
       wa.me = sock.user ? { id: sock.user.id, name: sock.user.name || sock.user.verifiedName || '' } : null;
-      console.log('[wa] connected as', wa.me && wa.me.id);
+      console.log('[wa] connected as', maskJid(wa.me && wa.me.id));
     }
 
     if (connection === 'close') {
@@ -103,6 +107,12 @@ async function connectWhatsApp() {
       }
     }
   });
+}
+
+// "60123456789:1@s.whatsapp.net" -> "60…789", so logs don't hold the full number.
+function maskJid(jid) {
+  const digits = String(jid || '').split(/[:@]/)[0];
+  return digits.length > 6 ? digits.slice(0, 2) + '…' + digits.slice(-3) : '(unknown)';
 }
 
 function onConnectError(err) {
@@ -346,10 +356,12 @@ function loadSchedules() {
 let schedules = loadSchedules();
 
 // Write to a temp file and rename it into place, so a crash mid-write can't
-// leave a truncated schedules.json behind.
+// leave a truncated schedules.json behind. It holds contact names and phone
+// numbers, so only this user can read it.
 function saveSchedules() {
   const tmp = SCHEDULES_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(schedules, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify(schedules, null, 2), { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600); // mode only applies when the file is new
   fs.renameSync(tmp, SCHEDULES_FILE);
 }
 
