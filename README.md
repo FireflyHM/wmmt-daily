@@ -2,7 +2,7 @@
 
 Shows the **overseas daily titles**, the **6RR bingo frame** and the matching **number plate** for today (from your device's clock) or any date you pick. Run locally, it also shares them to WhatsApp.
 
-- Titles: the overseas (外) rows of <https://w.atwiki.jp/wmmt_title/>. They repeat on a two-year cycle (even and odd years).
+- Titles: the game's own title list and English text, cross-checked with <https://w.atwiki.jp/wmmt_title/>. They repeat on a two-year cycle (even and odd years); the bingo title is the same every year.
 - Frames: the day-of-year rotation from <https://www.dragapult.xyz/wmmt-frame-viewer/> by SirScrubbington. Leap years add `studs2` on 29 Feb.
 - Number plate: the plate image (`public/img/plate-blank.png`) is sourced from the Wangan Navigator app. The date digits are drawn over it in [Barlow Condensed](https://github.com/jpt/barlow) SemiBold, licensed under the SIL Open Font License (`public/fonts/OFL-BarlowCondensed.txt`).
 - Header: key art from the [WANGAN MIDNIGHT MAXIMUM TUNE 6RR official site](https://wanganmaxi-official.com/wanganmaxi6rr/en/) (Asia/Oceania), © Bandai Namco.
@@ -27,7 +27,7 @@ Run `npm ci`, then `npm run lint` (ESLint, configured in `eslint.config.js`). Ev
 
 ## Updating the title data
 
-`public/data/titles.js` is generated from the wiki. To rebuild it, run `node tools/build-titles.js`. This downloads the 24 month pages, about 30 seconds.
+`public/data/titles.js` holds every title and is no longer downloaded. It was made in October 2026 from the game's own data (`honor.bin` and `msgdb.lua`); two titles with no English in the game data keep the wiki's. To fix a title, edit that file: each date is `"MM-DD": [titles 1-6, bingo title]` under `en`/`ja` and `even`/`odd`.
 
 ## Optional: send to WhatsApp from your PC
 

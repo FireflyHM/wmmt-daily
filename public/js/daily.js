@@ -2,8 +2,9 @@
  * Shared date -> daily titles / bingo frame logic.
  * Loaded by the browser (window.WMMTDaily) and by server.js (require).
  *
- * Titles: overseas ("外") rows from https://w.atwiki.jp/wmmt_title/
+ * Titles: the game's own title data (public/data/titles.js)
  *   - titles repeat on a two-year cycle, so the table is keyed by even/odd year
+ *   - the bingo title (slot 7) is the same every year
  * Frames: rotation from https://www.dragapult.xyz/wmmt-frame-viewer/
  *   - one frame per day-of-year; leap years insert "studs2" on day 60
  */
