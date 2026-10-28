@@ -563,6 +563,30 @@
         }) + ' at ' + s.time;
       li.appendChild(when);
 
+      var actions = document.createElement('div');
+      actions.className = 'actions';
+      if (s.canSendMissed) {
+        // Today's slot was missed (server or WhatsApp was off): offer to send it late.
+        var late = document.createElement('button');
+        late.type = 'button';
+        late.className = 'btn wa';
+        late.textContent = 'Send now';
+        late.title = 'Send today\'s missed ' + s.time + ' message now';
+        late.addEventListener('click', function () {
+          var names = describeTargets(s).replace(/^To: /, '');
+          // eslint-disable-next-line no-alert -- this posts to real chats
+          if (!confirm('Send today\'s missed message to ' + names + ' now?')) return;
+          late.disabled = true;
+          late.textContent = 'Sending…';
+          api('/api/schedules/' + encodeURIComponent(s.id) + '/send-missed', { method: 'POST' })
+            .then(loadSchedules)
+            .catch(function (e) {
+              $('sched-msg').textContent = 'Could not send: ' + e.message;
+              loadSchedules();
+            });
+        });
+        actions.appendChild(late);
+      }
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'btn ghost';
@@ -574,7 +598,8 @@
           .then(loadSchedules)
           .catch(function (e) { $('sched-msg').textContent = e.message; });
       });
-      li.appendChild(del);
+      actions.appendChild(del);
+      li.appendChild(actions);
 
       var who = document.createElement('span');
       who.className = 'who';
@@ -592,7 +617,7 @@
         var good = !s.lastRun.error && ok === total;
         last.className = 'last ' + (good ? 'ok' : 'err');
         last.textContent = ' · Last: ' + fmtDateTime(s.lastRun.at) + ' — ' +
-          (s.lastRun.error || ('sent ' + ok + ' of ' + total));
+          (s.lastRun.error || ('sent ' + ok + ' of ' + total + (s.lastRun.late ? ' (late)' : '')));
         if (s.lastRun.results) {
           last.title = s.lastRun.results.map(function (r) {
             return (r.ok ? '✓ ' : '✕ ') + r.target + (r.ok ? '' : ' — ' + r.error);

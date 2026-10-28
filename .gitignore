@@ -1,4 +1,4 @@
 node_modules/
 .wa-auth/
 schedules.json*
-server.log
+server*.log

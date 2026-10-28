@@ -51,6 +51,7 @@ For **Push directly**, link WhatsApp by scanning the QR code (Settings → Linke
 
 - Schedules are saved in `schedules.json`, which is git-ignored. They only go out while `npm start` is running and WhatsApp is linked.
 - If WhatsApp is disconnected at the scheduled time, the server keeps retrying for 15 minutes. After that, the send is marked as missed rather than sent late.
+- When today's send was missed, its schedule shows a **Send now** button. It asks first, then sends that day's message to the schedule's numbers and groups (shown as "sent … (late)"). Misses from earlier days don't get the button.
 
 - The server also answers `GET /api/daily?date=YYYY-MM-DD` (date optional, default today) with that day's titles, frame and formatted message as JSON, for use from scripts on this PC. `GET /api/daily/image?date=YYYY-MM-DD` returns the frame and plate image that sends attach.
 

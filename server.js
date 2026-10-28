@@ -461,20 +461,40 @@ function nextRun(s, now = new Date()) {
   return atTime(Daily.addDays(Daily.startOfDay(now), 1), s.time);
 }
 
+// Today's slot of this schedule was missed and hasn't been sent late yet, so
+// the page can offer "Send now". Older misses aren't offered: that day has passed.
+function missedToday(s) {
+  const r = s.lastRun;
+  const missed = r && (r.missed || /^Missed/.test(r.error || ''));
+  return !!missed && s.lastRunDate === Daily.toISODate(new Date()) && !running.has(s.id);
+}
+
 function scheduleView(s) {
   const next = nextRun(s);
-  return { ...s, nextRun: next ? next.toISOString() : null };
+  return { ...s, nextRun: next ? next.toISOString() : null, canSendMissed: missedToday(s) };
 }
 
 function markMissed(s, due, now, reason) {
   s.lastRunDate = Daily.toISODate(due);
   if (s.repeat === 'once') s.done = true;
-  s.lastRun = { at: now.toISOString(), error: 'Missed — ' + reason };
+  s.lastRun = { at: now.toISOString(), error: 'Missed — ' + reason, missed: true };
   saveSchedules();
   console.log('[schedule] %s missed: %s', s.id, reason);
 }
 
 const running = new Set();
+
+// Sends this schedule's message for `day` to its own recipients and settings.
+function sendScheduled(s, day) {
+  const daily = Daily.getDaily(day, TITLES);
+  return sendDaily({
+    daily,
+    text: Daily.formatMessage(daily, { japanese: s.japanese }),
+    includeImage: s.includeImage,
+    numbers: s.numbers.map((n) => n.number),
+    groups: s.groups.map((g) => g.id),
+  });
+}
 
 async function runSchedule(s, due, now) {
   running.add(s.id);
@@ -484,15 +504,7 @@ async function runSchedule(s, due, now) {
   try {
     // Save before sending, so a crash part-way through can't resend after a restart.
     saveSchedules();
-    const daily = Daily.getDaily(day, TITLES);
-    const text = Daily.formatMessage(daily, { japanese: s.japanese });
-    const results = await sendDaily({
-      daily,
-      text,
-      includeImage: s.includeImage,
-      numbers: s.numbers.map((n) => n.number),
-      groups: s.groups.map((g) => g.id),
-    });
+    const results = await sendScheduled(s, day);
     s.lastRun = { at: now.toISOString(), results };
     console.log('[schedule] %s sent: %d/%d ok', s.id, results.filter((r) => r.ok).length, results.length);
   } catch (err) {
@@ -575,6 +587,28 @@ app.post('/api/schedules', (req, res) => {
     res.json(scheduleView(s));
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// "Send now" for a schedule that missed today's slot: sends today's message late, once.
+app.post('/api/schedules/:id/send-missed', async (req, res) => {
+  if (!requireOpen(res)) return;
+  const s = schedules.find((x) => x.id === req.params.id);
+  if (!s) return res.status(404).json({ error: 'Schedule not found' });
+  if (!missedToday(s)) return res.status(409).json({ error: 'Nothing to send: today\'s send was not missed' });
+  running.add(s.id);
+  const now = new Date();
+  try {
+    const results = await sendScheduled(s, Daily.startOfDay(now));
+    s.lastRun = { at: now.toISOString(), results, late: true };
+    console.log('[schedule] %s sent late: %d/%d ok', s.id, results.filter((r) => r.ok).length, results.length);
+    res.json(scheduleView(s));
+  } catch (err) {
+    // Leave it marked as missed so the button stays available to try again.
+    res.status(500).json({ error: err.message });
+  } finally {
+    running.delete(s.id);
+    saveSchedules();
   }
 });
 
