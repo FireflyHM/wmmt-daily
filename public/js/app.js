@@ -11,6 +11,7 @@
   var THEME_KEY = 'wmmt-daily.theme'; // also read by the inline script in index.html
 
   var FLASH_MS = 1800; // how long a button shows "Copied" etc.
+  var CONFIRM_MS = 4000; // how long a "Confirm …" button waits for the second click
   var SEARCH_DEBOUNCE_MS = 150;
   var STATUS_POLL_MS = 10000; // linked or not linked
   var STATUS_POLL_PAIRING_MS = 2000; // while connecting or showing a QR code
@@ -191,6 +192,14 @@
     $('plate-label').textContent = 'Number plate SGP 765 す ' + plate.replace(' ', '-');
   }
 
+  // Size the plate under the frame the same way as the shared image (frames come in two shapes).
+  function sizePlate() {
+    var img = $('frame-img');
+    if (!img.naturalWidth) return;
+    var L = D.shareLayout(img.naturalWidth, img.naturalHeight);
+    document.querySelector('.plate svg').style.width = (L.plate.width / img.naturalWidth * 100) + '%';
+  }
+
   function render() {
     var date = state.date;
     var daily = D.getDaily(date, TITLES);
@@ -311,6 +320,32 @@
   function frameFile(daily) {
     return shareImageBlob(daily).then(function (blob) {
       return new File([blob], 'wmmt-daily-' + daily.date + '-' + daily.frame + '.png', { type: 'image/png' });
+    });
+  }
+
+  // Two-step confirmation inside the page, since some browsers (including
+  // embedded ones) block window.confirm() and treat it as Cancel. The first
+  // click changes the button to `armedLabel`; a second click within
+  // CONFIRM_MS runs `action`, otherwise the button goes back to normal.
+  function confirmClick(btn, armedLabel, action) {
+    var label = btn.textContent;
+    var timer = null;
+    function reset() {
+      clearTimeout(timer);
+      timer = null;
+      btn.textContent = label;
+      btn.classList.remove('armed');
+    }
+    btn.addEventListener('click', function () {
+      if (!timer) {
+        btn.textContent = armedLabel;
+        btn.classList.add('armed');
+        announce(armedLabel + ': click again to confirm');
+        timer = setTimeout(reset, CONFIRM_MS);
+        return;
+      }
+      reset();
+      action();
     });
   }
 
@@ -566,16 +601,14 @@
       var actions = document.createElement('div');
       actions.className = 'actions';
       if (s.canSendMissed) {
-        // Today's slot was missed (server or WhatsApp was off): offer to send it late.
+        // Today's slot was missed or failed before reaching anyone: offer to send it late.
         var late = document.createElement('button');
         late.type = 'button';
         late.className = 'btn wa';
         late.textContent = 'Send now';
-        late.title = 'Send today\'s missed ' + s.time + ' message now';
-        late.addEventListener('click', function () {
-          var names = describeTargets(s).replace(/^To: /, '');
-          // eslint-disable-next-line no-alert -- this posts to real chats
-          if (!confirm('Send today\'s missed message to ' + names + ' now?')) return;
+        late.title = 'Send today\'s ' + s.time + ' message now';
+        // Posts to real chats, so it takes a second click.
+        confirmClick(late, 'Confirm send', function () {
           late.disabled = true;
           late.textContent = 'Sending…';
           api('/api/schedules/' + encodeURIComponent(s.id) + '/send-missed', { method: 'POST' })
@@ -591,9 +624,8 @@
       del.type = 'button';
       del.className = 'btn ghost';
       del.textContent = 'Delete';
-      del.addEventListener('click', function () {
-        // eslint-disable-next-line no-alert -- deleting can't be undone
-        if (!confirm('Delete this scheduled send?')) return;
+      // Deleting can't be undone, so it takes a second click.
+      confirmClick(del, 'Confirm delete', function () {
         api('/api/schedules/' + encodeURIComponent(s.id), { method: 'DELETE' })
           .then(loadSchedules)
           .catch(function (e) { $('sched-msg').textContent = e.message; });
@@ -713,9 +745,8 @@
         $('wa-status-text').textContent = 'Could not connect: ' + e.message;
       });
     });
-    $('wa-logout').addEventListener('click', function () {
-      // eslint-disable-next-line no-alert -- unlinking needs a fresh QR scan to undo
-      if (!confirm('Unlink this WhatsApp account from WMMT Daily?')) return;
+    // Unlinking needs a fresh QR scan to undo, so it takes a second click.
+    confirmClick($('wa-logout'), 'Confirm unlink', function () {
       api('/api/wa/logout', { method: 'POST' }).then(pollStatus).catch(function (e) {
         $('wa-status-text').textContent = 'Could not unlink: ' + e.message;
       });
@@ -764,6 +795,8 @@
     $('msg-note').hidden = true;
     setMessage(D.formatMessage(state.daily, { japanese: showJapanese() }));
   });
+
+  $('frame-img').addEventListener('load', sizePlate);
 
   $('show-ja').checked = load(SHOW_JA_KEY, false);
   applyJapanese();

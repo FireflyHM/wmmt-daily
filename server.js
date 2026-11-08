@@ -461,12 +461,13 @@ function nextRun(s, now = new Date()) {
   return atTime(Daily.addDays(Daily.startOfDay(now), 1), s.time);
 }
 
-// Today's slot of this schedule was missed and hasn't been sent late yet, so
-// the page can offer "Send now". Older misses aren't offered: that day has passed.
+// Today's slot of this schedule was missed, or failed before reaching anyone,
+// and hasn't been sent since, so the page can offer "Send now". Older days
+// aren't offered (that day has passed), nor partial sends (some already got it).
 function missedToday(s) {
   const r = s.lastRun;
-  const missed = r && (r.missed || /^Missed/.test(r.error || ''));
-  return !!missed && s.lastRunDate === Daily.toISODate(new Date()) && !running.has(s.id);
+  const nothingSent = r && (r.missed || (r.error && !r.results));
+  return !!nothingSent && s.lastRunDate === Daily.toISODate(new Date()) && !running.has(s.id);
 }
 
 function scheduleView(s) {
@@ -590,12 +591,12 @@ app.post('/api/schedules', (req, res) => {
   }
 });
 
-// "Send now" for a schedule that missed today's slot: sends today's message late, once.
+// "Send now" for a schedule whose slot today was missed or failed: sends today's message late, once.
 app.post('/api/schedules/:id/send-missed', async (req, res) => {
   if (!requireOpen(res)) return;
   const s = schedules.find((x) => x.id === req.params.id);
   if (!s) return res.status(404).json({ error: 'Schedule not found' });
-  if (!missedToday(s)) return res.status(409).json({ error: 'Nothing to send: today\'s send was not missed' });
+  if (!missedToday(s)) return res.status(409).json({ error: 'Nothing to send: today\'s send was not missed or failed' });
   running.add(s.id);
   const now = new Date();
   try {

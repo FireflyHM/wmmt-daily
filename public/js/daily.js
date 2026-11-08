@@ -221,16 +221,19 @@
     return { dot: dot, digits: digits };
   }
 
-  // Shared image: the frame on top, the plate below at the frame's height.
+  // Shared image: the frame on top, the plate below as large as fits in the
+  // frame's own width and height. Most frames are 512×168 (plate as tall as
+  // the frame); some are 456×256 (plate as wide as the frame).
   function shareLayout(frameWidth, frameHeight) {
     var pad = Math.round(frameWidth * FRAME_PAD_RATIO);
-    var plateWidth = Math.round(frameHeight * PLATE.width / PLATE.height);
+    var plateHeight = Math.min(frameHeight, Math.round(frameWidth * PLATE.height / PLATE.width));
+    var plateWidth = Math.min(frameWidth, Math.round(plateHeight * PLATE.width / PLATE.height));
     var width = frameWidth + pad * 2;
     return {
       width: width,
-      height: frameHeight * 2 + pad * 3,
+      height: frameHeight + plateHeight + pad * 3,
       frame: { x: pad, y: pad, width: frameWidth, height: frameHeight },
-      plate: { x: Math.round((width - plateWidth) / 2), y: frameHeight + pad * 2, width: plateWidth, height: frameHeight },
+      plate: { x: Math.round((width - plateWidth) / 2), y: frameHeight + pad * 2, width: plateWidth, height: plateHeight },
     };
   }
 

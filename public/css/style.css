@@ -135,6 +135,8 @@ h4 { margin: 0 0 10px; font-size: 15px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.wa { background: var(--wa); border-color: var(--wa); color: var(--wa-ink); }
 .btn.ghost { background: transparent; }
+/* Waiting for the second click of a two-step confirmation (confirmClick in app.js). */
+.btn.armed { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .link {
   border: 0; background: none; padding: 0; margin-left: 6px;
   color: var(--accent); font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0;
@@ -197,7 +199,8 @@ textarea {
   src: url("../fonts/barlow-condensed-600.woff2") format("woff2");
 }
 .plate { margin-top: 14px; }
-/* As in the shared image: as tall as the 512×168 frame, so 346/512 of its width. */
+/* As in the shared image: as tall as a 512×168 frame, so 346/512 of its width.
+   app.js (sizePlate) adjusts this for the taller 456×256 frames. */
 .plate svg { display: block; width: 67.6%; height: auto; margin: 0 auto; }
 /* Plate ink is part of the plate, so it stays the same in light and dark mode. */
 .plate-digits { fill: #052c00; }
